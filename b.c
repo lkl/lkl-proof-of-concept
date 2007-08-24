@@ -1,18 +1,11 @@
-#define _LARGEFILE64_SOURCE
-#define _GNU_SOURCE
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <linux/sched.h>
 #include <assert.h>
-#include <pthread.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <linux/types.h>
-#include <linux/dirent.h>
-#include <linux/unistd.h>
-
+#include <windows.h>
 
 void show_mem(void)
 {
@@ -41,8 +34,8 @@ void cpu_wait_events(void)
 extern void start_kernel(void);
 
 struct _thread_info {
-        pthread_t th;
-        pthread_mutex_t sched_mutex;
+        HANDLE th;
+        HANDLE sched_sem;
 };
 
 struct kernel_thread_helper_arg {
@@ -60,8 +53,7 @@ void private_thread_info_init(void *arg)
 {
         struct _thread_info *pti=(struct _thread_info*)arg;
 
-        pthread_mutex_init(&pti->sched_mutex, NULL);
-        pthread_mutex_lock(&pti->sched_mutex);
+        pti->sched_sem=CreateSemaphore(NULL, 0, 100, NULL);
 }
 
 void _switch_to(void *prev, void *next)
@@ -69,11 +61,11 @@ void _switch_to(void *prev, void *next)
         struct _thread_info *_prev=(struct _thread_info*)prev;
         struct _thread_info *_next=(struct _thread_info*)next;
         
-        pthread_mutex_unlock(&_next->sched_mutex);
-        pthread_mutex_lock(&_prev->sched_mutex);
+        ReleaseSemaphore(_next->sched_sem, 1, NULL);
+        WaitForSingleObject(_prev->sched_sem, INFINITE);
 }
 
-pthread_mutex_t kth_mutex = PTHREAD_MUTEX_INITIALIZER;
+HANDLE kth_sem;
 
 void* kernel_thread_helper(void *arg)
 {
@@ -82,8 +74,8 @@ void* kernel_thread_helper(void *arg)
         void *farg=ktha->arg;
         struct _thread_info *pti=ktha->pti;
 
-        pthread_mutex_unlock(&kth_mutex);
-        pthread_mutex_lock(&pti->sched_mutex);
+        ReleaseSemaphore(kth_sem, 1, NULL);
+        WaitForSingleObject(pti->sched_sem, INFINITE);
         return (void*)fn(farg);
 }
 
@@ -93,7 +85,7 @@ void destroy_thread(void *arg)
 {
         struct _thread_info *pti=(struct _thread_info*)arg;
 
-        pthread_cancel(pti->th);
+        TerminateThread(pti->th, 0);
 }
 
 int _copy_thread(int (*fn)(void*), void *arg, void *pti)
@@ -103,11 +95,11 @@ int _copy_thread(int (*fn)(void*), void *arg, void *pti)
                 .arg = arg,
                 .pti = (struct _thread_info*)pti
         };
-        int ret;
 
-        ret=pthread_create(&ktha.pti->th, NULL, kernel_thread_helper, &ktha);
-        pthread_mutex_lock(&kth_mutex);
-        return ret;
+
+        ktha.pti->th=CreateThread(NULL, 0, kernel_thread_helper, &ktha, 0, NULL);
+	WaitForSingleObject(kth_sem, INFINITE);
+        return 0;
 }
 
 extern int sbull_init(void);
@@ -126,13 +118,22 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
         printf("\n");
 
 #endif
-
+	#define O_RDONLY 0
+	#define O_LARGEFILE 00100000
+	#define O_DIRECTORY 00200000
         if (strcmp(filename, "/bin/init") == 0) {
                 int fd=sys_open("/", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0);
                 if (fd >= 0) {
                         char x[4096];
                         int count, reclen;
-                        struct dirent *de;
+			#define NAME_MAX 255
+                        struct dirent {
+
+				long d_ino;                 /* inode number */
+				off_t d_off;                /* offset to next dirent */
+				unsigned short d_reclen;    /* length of this dirent */
+				char d_name [NAME_MAX+1];   /* filename (null-terminated) */
+			} *de;
 
                         count=sys_getdents(fd, x, sizeof(x));
                         assert(count>0);
@@ -149,7 +150,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
                 }
         }
 
-        return -1; 
+        return 0; 
 
 }
 
@@ -169,12 +170,12 @@ long _panic_blink(long time)
 void _mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
 {
         *phys_mem_size=256*1024*1024;
-        *phys_mem=memalign(4096, *phys_mem_size);
+        *phys_mem=malloc(*phys_mem_size);
 }
 
 int main(void)
 {
-        pthread_mutex_lock(&kth_mutex);
+        kth_sem=CreateSemaphore(NULL, 0, 100, NULL);
         start_kernel();
         return 0;
 }
@@ -197,12 +198,45 @@ unsigned long _sbull_sectors(void)
         return sectors;
 }
 
+int do_read(int fd, char *buffer, int size)
+{
+	int n, from=0;
+	
+	while (1) {
+		n=read(fd, &buffer[from], size-from);
+		if (n <= 0)
+		        return -1;
+	        if (n+from == size)
+	    	        return 0;
+		from+=n;
+	}
+}
+
+int do_write(int fd, char *buffer, int size)
+{
+	int n, from=0;
+	
+	while (1) {
+		n=write(fd, &buffer[from], size-from);
+		if (n <= 0)
+		        return -1;
+	        if (n+from == size)
+	    	        return 0;
+		from+=n;
+	}
+}
+
+
 void _sbull_transfer(int fd, unsigned long sector, unsigned long nsect, char *buffer, int dir)
 {
-        assert(lseek64(fd, sector*512, SEEK_SET) >= 0);
-        
+	int x;
+        x=lseek64(fd, sector*512, SEEK_SET);
+	assert(x >= 0);
         if (dir)
-                assert(write(fd, buffer, nsect*512) == nsect*512);
+                x=do_write(fd, buffer, nsect*512);
         else
-                assert(read(fd, buffer, nsect*512) == nsect*512);
+                x=do_read(fd, buffer, nsect*512);
+	assert(x == 0);
+
 }
+
