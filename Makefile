@@ -2,6 +2,9 @@
 all: a.exe a.out
 
 linux-native/.config: ../linux-2.6/arch/lkl/defconfig
+	-mkdir `dirname $@`
+	cp $^ $@
+
 linux-mingw/.config: ../linux-2.6/arch/lkl/defconfig
 	-mkdir `dirname $@`
 	cp $^ $@
