@@ -16,7 +16,6 @@ a.out: a.c linux-native/vmlinux
 
 linux-mingw/vmlinux: .force linux-mingw/.config
 	cd ../linux-2.6 && make O=../poc/linux-mingw ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- vmlinux
-
 a.exe: b.c linux-mingw/vmlinux
 	i586-mingw32msvc-gcc -g -Wall $^ 
 

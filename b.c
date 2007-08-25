@@ -137,7 +137,6 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 
                         count=sys_getdents(fd, x, sizeof(x));
                         assert(count>0);
-                        printf("open: %d %d %d\n", count);
 
                         de=(struct dirent*)x;
                         while (count > 0) {
@@ -163,7 +162,7 @@ void get_cmd_line(char **cl)
 
 long _panic_blink(long time)
 {
-        assert(1);
+        assert(0);
         return 0;
 }
 
@@ -180,9 +179,10 @@ int main(void)
         return 0;
 }
 
-int _sbull_open(void)
+FILE* _sbull_open(void)
 {
-        return open("disk", O_RDONLY);
+        FILE *f=fopen("disk", "r+b");
+	assert(f != NULL);
 }
 
 unsigned long _sbull_sectors(void)
@@ -198,45 +198,16 @@ unsigned long _sbull_sectors(void)
         return sectors;
 }
 
-int do_read(int fd, char *buffer, int size)
+void _sbull_transfer(FILE *f, unsigned long sector, unsigned long nsect, char *buffer, int dir)
 {
-	int n, from=0;
-	
-	while (1) {
-		n=read(fd, &buffer[from], size-from);
-		if (n <= 0)
-		        return -1;
-	        if (n+from == size)
-	    	        return 0;
-		from+=n;
-	}
-}
-
-int do_write(int fd, char *buffer, int size)
-{
-	int n, from=0;
-	
-	while (1) {
-		n=write(fd, &buffer[from], size-from);
-		if (n <= 0)
-		        return -1;
-	        if (n+from == size)
-	    	        return 0;
-		from+=n;
-	}
-}
-
-
-void _sbull_transfer(int fd, unsigned long sector, unsigned long nsect, char *buffer, int dir)
-{
-	int x;
-        x=lseek64(fd, sector*512, SEEK_SET);
-	assert(x >= 0);
-        if (dir)
-                x=do_write(fd, buffer, nsect*512);
-        else
-                x=do_read(fd, buffer, nsect*512);
+	int x, i, sum=0;
+        x=fseek(f, sector*512, SEEK_SET);
 	assert(x == 0);
-
+        if (dir)
+                x=fwrite(buffer, 512, nsect, f);
+        else
+                x=fread(buffer, 512, nsect, f);
+	
+	assert(x == nsect);
 }
 
