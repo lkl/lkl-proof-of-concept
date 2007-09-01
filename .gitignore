@@ -3,3 +3,7 @@ a.exe
 a.out
 linux-mingw
 linux-native
+*~
+include/*
+*.o
+*.o.cmd
