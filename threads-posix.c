@@ -1,5 +1,5 @@
 #include <pthread.h>
-
+#include <malloc.h>
 
 struct _thread_info {
         pthread_t th;
@@ -68,7 +68,50 @@ int linux_new_thread(int (*fn)(void*), void *arg, void *pti)
         return ret;
 }
 
+typedef struct {
+	pthread_mutex_t lock;
+	int count;
+	pthread_cond_t cond;
+} pthread_sem_t;
+
+void* linux_sem_new(int count)
+{
+	pthread_sem_t *sem=malloc(sizeof(*sem));
+
+	if (!sem)
+		return NULL;
+
+	pthread_mutex_init(&sem->lock, NULL);
+	pthread_cond_init(&sem->cond, NULL);
+	sem->count=count;
+
+	return sem;
+}
+
+void linux_sem_up(void *_sem)
+{
+	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+
+	pthread_mutex_lock(&sem->lock);
+	sem->count++;
+	if (sem->count > 0)
+		pthread_cond_signal(&sem->cond);
+	pthread_mutex_unlock(&sem->lock);
+}
+
+void linux_sem_down(void *_sem)
+{
+	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+
+	pthread_mutex_lock(&sem->lock);
+	if (sem->count <= 0)
+		pthread_cond_wait(&sem->cond, &sem->lock);
+	pthread_mutex_unlock(&sem->lock);
+}
+
+
 void threads_init(void)
 {
         pthread_mutex_lock(&kth_mutex);
 }
+

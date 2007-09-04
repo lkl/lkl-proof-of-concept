@@ -3,8 +3,10 @@ a.exe
 apr.exe
 a.out
 apr.out
+a-async.out
 linux-mingw
-linux-native
+linux
+linux-async
 *~
 include/*
 *.o

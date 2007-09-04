@@ -72,6 +72,17 @@ int linux_new_thread(int (*fn)(void*), void *arg, void *pti)
 	return ret;
 }
 
+/* only needed for async operations */
+void* linux_sem_new(int count)
+{
+	return (void*)1;
+}
+void linux_sem_up(void *_sem)
+{
+}
+void linux_sem_down(void *_sem)
+{
+}
 
 void threads_init(void)
 {
