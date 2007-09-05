@@ -5,7 +5,9 @@
 #include <malloc.h>
 
 #include <asm/unistd.h>
+#include <asm/callbacks.h>
 
+#include "drivers/linux/file_disk-major.h"
 
 extern void start_kernel(void);
 
@@ -31,12 +33,6 @@ void linux_main(void)
 	}
 }
 
-void linux_cmd_line(char **cl)
-{
-        static char x[] = "root=42:0";
-        *cl=x;
-}
-
 long linux_panic_blink(long time)
 {
         assert(0);
@@ -49,11 +45,18 @@ void linux_mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
         *phys_mem=(unsigned long)malloc(*phys_mem_size);
 }
 
-extern void threads_init(void);
+extern void threads_init(struct linux_native_operations *lnops);
+
 
 int main(void)
 {
-	threads_init();
-        start_kernel();
+	struct linux_native_operations lnops = {
+		.panic_blink = linux_panic_blink,
+		.mem_init = linux_mem_init,
+		.main = linux_main,
+	};
+
+	threads_init(&lnops);
+        linux_start_kernel(&lnops, "root=%d:0", FILE_DISK_MAJOR);
         return 0;
 }

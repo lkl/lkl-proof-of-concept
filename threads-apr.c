@@ -2,6 +2,9 @@
 #include <apr_thread_proc.h>
 #include <stdlib.h>
 
+#include <asm/callbacks.h>
+
+
 static apr_pool_t 		* lkl_thread_creator_pool;
 static apr_thread_mutex_t	* kth_mutex;
 
@@ -72,20 +75,14 @@ int linux_new_thread(int (*fn)(void*), void *arg, void *pti)
 	return ret;
 }
 
-/* only needed for async operations */
-void* linux_sem_new(int count)
+void threads_init(struct linux_native_operations *lnops)
 {
-	return (void*)1;
-}
-void linux_sem_up(void *_sem)
-{
-}
-void linux_sem_down(void *_sem)
-{
-}
+	lnops->thread_info_size=sizeof(struct _thread_info);
+	lnops->thread_info_init=linux_thread_info_init;
+	lnops->new_thread=linux_new_thread;
+	lnops->free_thread=linux_free_thread;
+	lnops->switch_to=linux_switch_to;
 
-void threads_init(void)
-{
 	apr_initialize();
 	atexit(apr_terminate);
 	apr_pool_create(&lkl_thread_creator_pool, NULL);

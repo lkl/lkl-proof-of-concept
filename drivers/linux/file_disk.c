@@ -97,7 +97,7 @@ int __init file_disk_init(void)
 	int file_disk_major;
 
         printk("file_disk\n");
-	file_disk_major = register_blkdev(42, "file_disk");
+	file_disk_major = register_blkdev(FILE_DISK_MAJOR, "file_disk");
 	if (file_disk_major < 0) {
 		printk(KERN_WARNING "file_disk: unable to get major number: %d\n", file_disk_major);
 		return -EBUSY;

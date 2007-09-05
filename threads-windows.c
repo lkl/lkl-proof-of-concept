@@ -1,5 +1,6 @@
 #include <windows.h>
 
+#include <asm/callbacks.h>
 
 struct _thread_info {
         HANDLE th;
@@ -32,7 +33,7 @@ void linux_switch_to(void *prev, void *next)
 
 HANDLE kth_sem;
 
-void* kernel_thread_helper(void *arg)
+DWORD WINAPI kernel_thread_helper(LPVOID arg)
 {
         struct kernel_thread_helper_arg *ktha=(struct kernel_thread_helper_arg*)arg;
         int (*fn)(void*)=ktha->fn;
@@ -41,7 +42,7 @@ void* kernel_thread_helper(void *arg)
 
         ReleaseSemaphore(kth_sem, 1, NULL);
         WaitForSingleObject(pti->sched_sem, INFINITE);
-        return (void*)fn(farg);
+        return fn(farg);
 }
 
 
@@ -78,7 +79,13 @@ void linux_sem_down(void *_sem)
 {
 }
 
-void threads_init(void)
+void threads_init(struct linux_native_operations *lnops)
 {
+	lnops->thread_info_size=sizeof(struct _thread_info);
+	lnops->thread_info_init=linux_thread_info_init;
+	lnops->new_thread=linux_new_thread;
+	lnops->free_thread=linux_free_thread;
+	lnops->switch_to=linux_switch_to;
+
         kth_sem=CreateSemaphore(NULL, 0, 100, NULL);
 }

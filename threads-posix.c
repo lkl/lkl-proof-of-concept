@@ -1,6 +1,8 @@
 #include <pthread.h>
 #include <malloc.h>
 
+#include <asm/callbacks.h>
+
 struct _thread_info {
         pthread_t th;
         pthread_mutex_t sched_mutex;
@@ -11,9 +13,6 @@ struct kernel_thread_helper_arg {
         void *arg;
         struct _thread_info *pti;
 };
-
-int linux_thread_info_size=sizeof(struct _thread_info);
-
 
 void linux_thread_info_init(void *arg)
 {
@@ -74,7 +73,7 @@ typedef struct {
 	pthread_cond_t cond;
 } pthread_sem_t;
 
-void* linux_sem_new(int count)
+void* linux_new_sem(int count)
 {
 	pthread_sem_t *sem=malloc(sizeof(*sem));
 
@@ -110,8 +109,18 @@ void linux_sem_down(void *_sem)
 }
 
 
-void threads_init(void)
+void threads_init(struct linux_native_operations *lnops)
 {
+	lnops->thread_info_size=sizeof(struct _thread_info);
+	lnops->thread_info_init=linux_thread_info_init;
+	lnops->new_thread=linux_new_thread;
+	lnops->free_thread=linux_free_thread;
+	lnops->switch_to=linux_switch_to;
+
+	lnops->new_sem=linux_new_sem;
+	lnops->sem_down=linux_sem_down;
+	lnops->sem_up=linux_sem_up;
+
         pthread_mutex_lock(&kth_mutex);
 }
 
