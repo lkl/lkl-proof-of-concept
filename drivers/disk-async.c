@@ -16,7 +16,7 @@ void aio_notify(sigval_t sv)
 		cs->status=1;
 	else
 		cs->status=0;
-	linux_trigger_irq(FILE_DISK_IRQ, cs);
+	linux_trigger_irq_with_data(FILE_DISK_IRQ, cs);
 }
 
 void* _file_open(void)

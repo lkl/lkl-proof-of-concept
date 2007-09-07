@@ -9,7 +9,7 @@
 
 #include "drivers/linux/file_disk-major.h"
 
-extern void start_kernel(void);
+static struct linux_native_operations lnops;
 
 void linux_main(void)
 {
@@ -31,6 +31,11 @@ void linux_main(void)
 
 		sys_close(fd);
 	}
+
+	/* testing timers */
+	if (lnops.timer) 
+		schedule_timeout_uninterruptible(100);
+
 }
 
 long linux_panic_blink(long time)
@@ -47,15 +52,14 @@ void linux_mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
 
 extern void threads_init(struct linux_native_operations *lnops);
 
+static struct linux_native_operations lnops = {
+	.panic_blink = linux_panic_blink,
+	.mem_init = linux_mem_init,
+	.main = linux_main,
+};
 
 int main(void)
 {
-	struct linux_native_operations lnops = {
-		.panic_blink = linux_panic_blink,
-		.mem_init = linux_mem_init,
-		.main = linux_main,
-	};
-
 	threads_init(&lnops);
         linux_start_kernel(&lnops, "root=%d:0", FILE_DISK_MAJOR);
         return 0;

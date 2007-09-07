@@ -30,7 +30,7 @@ void linux_thread_info_init(void *arg)
 	apr_thread_mutex_lock(pti->sched_mutex);
 }
 
-void linux_switch_to(void *prev, void *next)
+void linux_context_switch(void *prev, void *next)
 {
 	struct _thread_info *_prev=(struct _thread_info*)prev;
 	struct _thread_info *_next=(struct _thread_info*)next;
@@ -81,7 +81,7 @@ void threads_init(struct linux_native_operations *lnops)
 	lnops->thread_info_init=linux_thread_info_init;
 	lnops->new_thread=linux_new_thread;
 	lnops->free_thread=linux_free_thread;
-	lnops->switch_to=linux_switch_to;
+	lnops->context_switch=linux_context_switch;
 
 	apr_initialize();
 	atexit(apr_terminate);

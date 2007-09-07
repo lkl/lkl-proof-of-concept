@@ -1,5 +1,8 @@
 #include <pthread.h>
 #include <malloc.h>
+#include <sys/time.h>
+#include <time.h>
+#include <signal.h>
 
 #include <asm/callbacks.h>
 
@@ -22,7 +25,7 @@ void linux_thread_info_init(void *arg)
         pthread_mutex_lock(&pti->sched_mutex);
 }
 
-void linux_switch_to(void *prev, void *next)
+void linux_context_switch(void *prev, void *next)
 {
         struct _thread_info *_prev=(struct _thread_info*)prev;
         struct _thread_info *_next=(struct _thread_info*)next;
@@ -40,6 +43,7 @@ void* kernel_thread_helper(void *arg)
         void *farg=ktha->arg;
         struct _thread_info *pti=ktha->pti;
 
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
         pthread_mutex_unlock(&kth_mutex);
         pthread_mutex_lock(&pti->sched_mutex);
         return (void*)fn(farg);
@@ -87,9 +91,18 @@ void* linux_new_sem(int count)
 	return sem;
 }
 
+int signals=0;
+
 void linux_sem_up(void *_sem)
 {
 	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+
+	/*
+	 * Signals and pthread don't mix well. For now, just do busy waiting, so
+	 * that we can test the timer code.
+	 */
+	if (signals)
+		return;
 
 	pthread_mutex_lock(&sem->lock);
 	sem->count++;
@@ -102,12 +115,47 @@ void linux_sem_down(void *_sem)
 {
 	pthread_sem_t *sem=(pthread_sem_t*)_sem;
 
+	/*
+	 * Signals and pthread don't mix well. For now, just do busy waiting, so
+	 * that we can test the timer code.
+	 */
+	if (signals)
+		return;
+	
 	pthread_mutex_lock(&sem->lock);
 	if (sem->count <= 0)
 		pthread_cond_wait(&sem->cond, &sem->lock);
 	pthread_mutex_unlock(&sem->lock);
 }
 
+unsigned long long linux_time(void)
+{
+        struct timeval tv;
+
+        gettimeofday(&tv, NULL);
+
+        return tv.tv_sec*1000000000ULL+tv.tv_usec*1000ULL;
+}
+
+void sigalrm(int sig)
+{
+        linux_trigger_irq(TIMER_IRQ);
+}
+
+void linux_timer(unsigned long delta)
+{
+        unsigned long long delta_us=delta/1000;
+        struct timeval tv = {
+                .tv_sec = delta_us/1000000,
+                .tv_usec = delta_us%1000000
+        };
+        struct itimerval itval = {
+                .it_interval = {0, },
+                .it_value = tv
+        };
+        
+        setitimer(ITIMER_REAL, &itval, NULL);
+}
 
 void threads_init(struct linux_native_operations *lnops)
 {
@@ -115,11 +163,16 @@ void threads_init(struct linux_native_operations *lnops)
 	lnops->thread_info_init=linux_thread_info_init;
 	lnops->new_thread=linux_new_thread;
 	lnops->free_thread=linux_free_thread;
-	lnops->switch_to=linux_switch_to;
+	lnops->context_switch=linux_context_switch;
 
 	lnops->new_sem=linux_new_sem;
 	lnops->sem_down=linux_sem_down;
 	lnops->sem_up=linux_sem_up;
+
+	signals=1;
+        lnops->time=linux_time;
+        signal(SIGALRM, sigalrm);
+        lnops->timer=linux_timer;
 
         pthread_mutex_lock(&kth_mutex);
 }
