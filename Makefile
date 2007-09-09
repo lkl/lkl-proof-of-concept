@@ -5,7 +5,7 @@ LINUX=$(HERE)/../linux-2.6
 
 #all: a.exe apr.exe a.out apr.out
 all: a.exe a.out apr.out a-async.out
-
+#all:a-async.out
 
 include/asm:
 	-mkdir `dirname $@`
@@ -30,13 +30,13 @@ include/linux:
 INC=include/asm include/asm-generic include/asm-i386 include/linux
 
 linux-async/vmlinux: .force linux-async/.config
-	cd $(LINUX) && make O=$(HERE)/linux-async ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux ASYNC=-async EXTRA_CFLAGS=-DNR_IRQS=2 vmlinux
+	cd $(LINUX) && $(MAKE) O=$(HERE)/linux-async ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux ASYNC=-async EXTRA_CFLAGS=-DNR_IRQS=2 vmlinux
 
 linux/vmlinux: .force linux/.config
-	cd $(LINUX) && make O=$(HERE)/linux ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
+	cd $(LINUX) && $(MAKE) O=$(HERE)/linux ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
 
 linux-mingw/vmlinux: .force linux-mingw/.config
-	cd $(LINUX) && make O=$(HERE)/linux-mingw ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
+	cd $(LINUX) && $(MAKE) O=$(HERE)/linux-mingw ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
 
 COMMON_SOURCES=main.c drivers/disk.c drivers/console.c
 AOUT=$(COMMON_SOURCES) threads-posix.c linux/vmlinux
