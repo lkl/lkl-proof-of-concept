@@ -13,7 +13,7 @@ static struct linux_native_operations lnops;
 
 void linux_main(void)
 {
-	int fd=sys_open("/", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0);
+	int fd=sys_open("/", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
 	if (fd >= 0) {
 		char x[4096];
 		int count, reclen;
@@ -32,9 +32,15 @@ void linux_main(void)
 		sys_close(fd);
 	}
 
-	/* testing timers */
-	if (lnops.timer) 
-		schedule_timeout_uninterruptible(100);
+	/* test timers */
+	if (lnops.timer) {
+		struct timespec ts = { .tv_sec = 1};
+		for(i=3; i>0; i--) {
+			printf("Shutdown in %d \r", i); fflush(stdout);
+			sys_nanosleep(&ts, NULL);
+		}
+	}
+
 
 }
 
@@ -44,10 +50,17 @@ long linux_panic_blink(long time)
         return 0;
 }
 
+static void *_phys_mem;
+
 void linux_mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
 {
         *phys_mem_size=256*1024*1024;
         *phys_mem=(unsigned long)malloc(*phys_mem_size);
+}
+
+void linux_halt(void)
+{
+	free(_phys_mem);
 }
 
 extern void threads_init(struct linux_native_operations *lnops);
@@ -56,6 +69,7 @@ static struct linux_native_operations lnops = {
 	.panic_blink = linux_panic_blink,
 	.mem_init = linux_mem_init,
 	.main = linux_main,
+	.halt = linux_halt
 };
 
 int main(void)

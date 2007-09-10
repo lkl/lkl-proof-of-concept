@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <signal.h>
+#include <assert.h>
 
 #include <asm/callbacks.h>
 
@@ -49,10 +50,13 @@ void* kernel_thread_helper(void *arg)
         return (void*)fn(farg);
 }
 
+static int debug_thread_count=0;
+
 void linux_free_thread(void *arg)
 {
         struct _thread_info *pti=(struct _thread_info*)arg;
 
+	debug_thread_count--;
         pthread_cancel(pti->th);
 }
 
@@ -65,7 +69,7 @@ int linux_new_thread(int (*fn)(void*), void *arg, void *pti)
         };
         int ret;
 
-
+	debug_thread_count++;
         ret=pthread_create(&ktha.pti->th, NULL, kernel_thread_helper, &ktha);
         pthread_mutex_lock(&kth_mutex);
         return ret;
@@ -77,55 +81,43 @@ typedef struct {
 	pthread_cond_t cond;
 } pthread_sem_t;
 
-void* linux_new_sem(int count)
+static pthread_sem_t idle_sem = {
+	.lock = PTHREAD_MUTEX_INITIALIZER,
+	.count = 0,
+	.cond = PTHREAD_COND_INITIALIZER
+};
+
+void linux_exit_idle(void)
 {
-	pthread_sem_t *sem=malloc(sizeof(*sem));
-
-	if (!sem)
-		return NULL;
-
-	pthread_mutex_init(&sem->lock, NULL);
-	pthread_cond_init(&sem->cond, NULL);
-	sem->count=count;
-
-	return sem;
+	pthread_mutex_lock(&idle_sem.lock);
+	idle_sem.count++;
+	if (idle_sem.count > 0)
+		pthread_cond_signal(&idle_sem.cond);
+	pthread_mutex_unlock(&idle_sem.lock);
 }
 
-int signals=0;
-
-void linux_sem_up(void *_sem)
+void linux_enter_idle(void)
 {
-	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+	sigset_t sigmask;
 
 	/*
-	 * Signals and pthread don't mix well. For now, just do busy waiting, so
-	 * that we can test the timer code.
+	 * Avoid deadlocks by blocking signals for idle thread. A few notes:
+	 *
+	 * - POSIX says it will send the signal to one of the threads which has
+	 * signal unblocked
+	 * - we have at least 2 running threads: idle and init
+	 * - only init can call this function, thus only init can block the signal
+	 *
 	 */
-	if (signals)
-		return;
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGALRM);
 
-	pthread_mutex_lock(&sem->lock);
-	sem->count++;
-	if (sem->count > 0)
-		pthread_cond_signal(&sem->cond);
-	pthread_mutex_unlock(&sem->lock);
-}
-
-void linux_sem_down(void *_sem)
-{
-	pthread_sem_t *sem=(pthread_sem_t*)_sem;
-
-	/*
-	 * Signals and pthread don't mix well. For now, just do busy waiting, so
-	 * that we can test the timer code.
-	 */
-	if (signals)
-		return;
-	
-	pthread_mutex_lock(&sem->lock);
-	if (sem->count <= 0)
-		pthread_cond_wait(&sem->cond, &sem->lock);
-	pthread_mutex_unlock(&sem->lock);
+	pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
+	pthread_mutex_lock(&idle_sem.lock);
+	if (idle_sem.count <= 0)
+		pthread_cond_wait(&idle_sem.cond, &idle_sem.lock);
+	pthread_mutex_unlock(&idle_sem.lock);
+	pthread_sigmask(SIG_UNBLOCK, &sigmask, NULL);
 }
 
 unsigned long long linux_time(void)
@@ -157,19 +149,28 @@ void linux_timer(unsigned long delta)
         setitimer(ITIMER_REAL, &itval, NULL);
 }
 
+static void (*main_halt)(void);
+
+static void linux_posix_halt(void)
+{
+	if (main_halt)
+		main_halt();
+	assert(debug_thread_count == 0);
+}
+
 void threads_init(struct linux_native_operations *lnops)
 {
+	main_halt=lnops->halt;
+	lnops->halt=linux_posix_halt;
 	lnops->thread_info_size=sizeof(struct _thread_info);
 	lnops->thread_info_init=linux_thread_info_init;
 	lnops->new_thread=linux_new_thread;
 	lnops->free_thread=linux_free_thread;
 	lnops->context_switch=linux_context_switch;
 
-	lnops->new_sem=linux_new_sem;
-	lnops->sem_down=linux_sem_down;
-	lnops->sem_up=linux_sem_up;
+	lnops->enter_idle=linux_enter_idle;
+	lnops->exit_idle=linux_exit_idle;
 
-	signals=1;
         lnops->time=linux_time;
         signal(SIGALRM, sigalrm);
         lnops->timer=linux_timer;
