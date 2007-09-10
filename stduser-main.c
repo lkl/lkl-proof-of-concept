@@ -7,8 +7,6 @@
 #include <asm/unistd.h>
 #include <asm/callbacks.h>
 
-#include "drivers/linux/file_disk-major.h"
-
 static struct linux_native_operations lnops;
 
 void linux_main(void)

@@ -1,8 +1,6 @@
 #ifndef _FILE_DISK_ASYNC_H
 #define _FILE_DISK_ASYNC_H
 
-#include "file_disk-major.h"
-
 #define FILE_DISK_IRQ 1
 
 struct completion_status {

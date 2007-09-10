@@ -3,11 +3,12 @@ a.exe
 apr.exe
 a.out
 apr.out
-a-async.out
-linux-mingw
-linux
-linux-async
+a-aio.out
+lkl-nt
+lkl
+lkl-aio
 *~
 include/*
 *.o
 *.o.cmd
+built-in.mod.c

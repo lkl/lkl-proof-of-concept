@@ -104,7 +104,7 @@ void setup_device(struct file_disk_dev *dev, int which)
 		printk (KERN_NOTICE "alloc_disk failure\n");
                 return;
 	}
-	dev->gd->major = 42;
+	dev->gd->major = FILE_DISK_MAJOR;
 	dev->gd->first_minor = which*1;
 	dev->gd->fops = &file_disk_ops;
 	dev->gd->queue = dev->queue;
@@ -112,12 +112,13 @@ void setup_device(struct file_disk_dev *dev, int which)
 	snprintf (dev->gd->disk_name, 32, "file_disk%c", which + 'a');
 	set_capacity(dev->gd, nsectors);
 	add_disk(dev->gd);
+
+	printk("initialized %s with major=%d\n", dev->gd->disk_name, dev->gd->major);
 	return;
 }
 
 int __init file_disk_init(void)
 {
-	int file_disk_major;
 	int err;
 
 	if ((err=request_irq(FILE_DISK_IRQ, file_disk_irq, 0, "file_disk", NULL))) {
@@ -127,12 +128,11 @@ int __init file_disk_init(void)
 	
 	err = register_blkdev(FILE_DISK_MAJOR, "file_disk");
 	if (err < 0) {
-		printk(KERN_ERR "file_disk: unable to get major %d number: %d\n", FILE_DISK_MAJOR, err);
+		printk(KERN_ERR "file_disk: unable to register_blkdev major %d: %d\n", FILE_DISK_MAJOR, err);
 		free_irq(FILE_DISK_IRQ, NULL);
 		return err;
 	}
 
-	file_disk_major=err;
         setup_device(&file_disk_dev, 0);
     
 	return 0;

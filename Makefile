@@ -2,10 +2,8 @@ CFLAGS=-g
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
-
 #all: a.exe apr.exe a.out apr.out
-all: a.exe a.out apr.out a-async.out
-
+all: a.exe a.out apr.out a-aio.out
 
 include/asm:
 	-mkdir `dirname $@`
@@ -29,38 +27,59 @@ include/linux:
 
 INC=include/asm include/asm-generic include/asm-i386 include/linux
 
-linux-async/vmlinux: .force linux-async/.config
-	cd $(LINUX) && make O=$(HERE)/linux-async ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux ASYNC=-async EXTRA_CFLAGS=-DNR_IRQS=2 vmlinux
+lkl-aio/vmlinux: .force lkl-aio/.config
+	cd $(LINUX) && \
+	make O=$(HERE)/`dirname $@` ARCH=lkl \
+		LKL_DRIVERS="$(HERE)/drivers/posix-aio/lkl/ $(HERE)/drivers/stduser/lkl" \
+		EXTRA_CFLAGS=-DNR_IRQS=2 \
+		STDIO_CONSOLE=y FILE_DISK_MAJOR=42 \
+		vmlinux   	
 
-linux/vmlinux: .force linux/.config
-	cd $(LINUX) && make O=$(HERE)/linux ARCH=lkl LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
+lkl/vmlinux: .force lkl/.config
+	cd $(LINUX) && \
+	make O=$(HERE)/`dirname $@` ARCH=lkl \
+		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
+		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
+		vmlinux
 
-linux-mingw/vmlinux: .force linux-mingw/.config
-	cd $(LINUX) && make O=$(HERE)/linux-mingw ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- LKL_DRIVERS=$(HERE)/drivers/linux vmlinux
+lkl-nt/vmlinux: .force lkl-nt/.config
+	cd $(LINUX) && \
+	make O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
+		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
+		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
+		vmlinux 
 
-COMMON_SOURCES=main.c drivers/disk.c drivers/console.c
-AOUT=$(COMMON_SOURCES) threads-posix.c linux/vmlinux
-AOUT-async=$(patsubst %disk.c,%disk-async.c,  $(COMMON_SOURCES)) threads-posix.c linux-async/vmlinux
-APROUT=$(COMMON_SOURCES) threads-apr.c linux/vmlinux
-AEXE=$(COMMON_SOURCES) threads-windows.c linux-mingw/vmlinux
-APREXE=$(COMMON_SOURCES) threads-apr.c linux-mingw/vmlinux
+DRV_STDUSER=drivers/stduser/disk.c drivers/stduser/console.c 
+DRV_AIO=drivers/stduser/console.c drivers/posix-aio/disk-async.c 
 
-a-async.out: $(AOUT-async) $(INC)
-	gcc -Wall -g -Iinclude $(AOUT-async) -lpthread -lrt -o $@
+AOUT=stduser-main.c posix.c $(DRV_STDUSER) lkl/vmlinux
+AOUT-aio=stduser-main.c $(DRV_AIO) posix.c lkl-aio/vmlinux
+APROUT=stduser-main.c $(DRV_STDUSER) apr.c lkl/vmlinux
+AEXE=stduser-main.c $(DRV_STDUSER) nt.c lkl-nt/vmlinux
+APREXE=stduser-main.c $(DRV_STDUSER) apr.c lkl-nt/vmlinux
+
+a-aio.out: $(AOUT-aio) $(INC)
+	gcc -Wall -g -Iinclude $(AOUT-aio) -lpthread -lrt -DFILE_DISK_MAJOR=42 \
+		-o $@
 
 a.out: $(AOUT) $(INC)
-	gcc -Wall -g -Iinclude $(AOUT) -lpthread -o $@
+	gcc -Wall -g -Iinclude $(AOUT) -lpthread -DFILE_DISK_MAJOR=42 -o $@
 
 apr.out: $(APROUT) $(INC)
-	gcc -Wall -g -Iinclude -I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE $(APROUT) -L/usr/lib/debug/usr/lib/libapr-1.so.0.2.7 -lapr-1 -o $@
+	gcc -Wall -g -Iinclude -I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE \
+		$(APROUT) -L/usr/lib/debug/usr/lib/libapr-1.so.0.2.7 -lapr-1 \
+		-DFILE_DISK_MAJOR=42 -o $@   
 
 a.exe: $(AEXE) $(INC)
-	i586-mingw32msvc-gcc -g -Wall -Iinclude $(AEXE)
+	i586-mingw32msvc-gcc -g -Wall -Iinclude $(AEXE) -DFILE_DISK_MAJOR=42 \
+		-o $@ 
+
 
 apr.exe: $(APREXE) $(INC)
-	i586-mingw32msvc-gcc -g -Wall -Iinclude -I/usr/include/apr-1.0/ $(APREXE)
+	i586-mingw32msvc-gcc -g -Wall -Iinclude -I/usr/include/apr-1.0/ \
+		$(APREXE) -DFILE_DISK_MAJOR=42 -o $@
 
 clean:
-	-rm -rf a.exe a.out apr.exe apr.out linux linux-mingw linux-async include
+	-rm -rf a-aio.out a.exe a.out apr.exe apr.out lkl lkl-nt lkl-aio include
 
 .force:

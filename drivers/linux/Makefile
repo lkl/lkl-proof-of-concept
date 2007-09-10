@@ -1,2 +1,0 @@
-
-obj-y += stdio_console.o file_disk$(ASYNC).o 
