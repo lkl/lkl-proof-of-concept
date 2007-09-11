@@ -4,9 +4,11 @@ apr.exe
 a.out
 apr.out
 a-aio.out
+a.sys
 lkl-nt
 lkl
 lkl-aio
+lkl-ntk
 *~
 include/*
 *.o

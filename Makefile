@@ -3,7 +3,7 @@ HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
 #all: a.exe apr.exe a.out apr.out
-all: a.exe a.out apr.out a-aio.out
+all: a.exe a.out apr.out a-aio.out a.sys
 
 include/asm:
 	-mkdir `dirname $@`
@@ -49,14 +49,29 @@ lkl-nt/vmlinux: .force lkl-nt/.config
 		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
 		vmlinux 
 
+lkl-ntk/vmlinux: .force lkl-ntk/.config
+	cd $(LINUX) && \
+	make O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
+		LKL_DRIVERS="$(HERE)/drivers/ntk/lkl/ $(HERE)/drivers/stduser/lkl/" \
+		FILE_DISK=y FILE_DISK_MAJOR=42 \
+		vmlinux 
+
+
 DRV_STDUSER=drivers/stduser/disk.c drivers/stduser/console.c 
 DRV_AIO=drivers/stduser/console.c drivers/posix-aio/disk-async.c 
+DRV_NTK=drivers/ntk/disk.c 
 
 AOUT=stduser-main.c posix.c $(DRV_STDUSER) lkl/vmlinux
 AOUT-aio=stduser-main.c $(DRV_AIO) posix.c lkl-aio/vmlinux
 APROUT=stduser-main.c $(DRV_STDUSER) apr.c lkl/vmlinux
 AEXE=stduser-main.c $(DRV_STDUSER) nt.c lkl-nt/vmlinux
 APREXE=stduser-main.c $(DRV_STDUSER) apr.c lkl-nt/vmlinux
+ASYS = ntk.c $(DRV_NTK) lkl-ntk/vmlinux
+
+a.sys: $(ASYS) $(INC) 
+	i586-mingw32msvc-gcc -Wall -g -Iinclude -O2  -D_WIN32_WINNT=0x0500 \
+	$(ASYS) -Wl,--subsystem,native -Wl,--entry,_DriverEntry  -nostartfiles \
+	-lntoskrnl -lhal -nostdlib -shared -DFILE_DISK_MAJOR=42 -o $@
 
 a-aio.out: $(AOUT-aio) $(INC)
 	gcc -Wall -g -Iinclude $(AOUT-aio) -lpthread -lrt -DFILE_DISK_MAJOR=42 \
