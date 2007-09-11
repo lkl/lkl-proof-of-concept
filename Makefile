@@ -2,7 +2,6 @@ CFLAGS=-g
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
-#all: a.exe apr.exe a.out apr.out
 all: a.exe a.out apr.out a-aio.out a.sys
 
 include/asm:
@@ -29,7 +28,7 @@ INC=include/asm include/asm-generic include/asm-i386 include/linux
 
 lkl-aio/vmlinux: .force lkl-aio/.config
 	cd $(LINUX) && \
-	make O=$(HERE)/`dirname $@` ARCH=lkl \
+	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl \
 		LKL_DRIVERS="$(HERE)/drivers/posix-aio/lkl/ $(HERE)/drivers/stduser/lkl" \
 		EXTRA_CFLAGS=-DNR_IRQS=2 \
 		STDIO_CONSOLE=y FILE_DISK_MAJOR=42 \
@@ -37,21 +36,21 @@ lkl-aio/vmlinux: .force lkl-aio/.config
 
 lkl/vmlinux: .force lkl/.config
 	cd $(LINUX) && \
-	make O=$(HERE)/`dirname $@` ARCH=lkl \
+	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl \
 		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
 		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
 		vmlinux
 
 lkl-nt/vmlinux: .force lkl-nt/.config
 	cd $(LINUX) && \
-	make O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
+	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
 		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
 		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
 		vmlinux 
 
 lkl-ntk/vmlinux: .force lkl-ntk/.config
 	cd $(LINUX) && \
-	make O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
+	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
 		LKL_DRIVERS="$(HERE)/drivers/ntk/lkl/ $(HERE)/drivers/stduser/lkl/" \
 		FILE_DISK=y FILE_DISK_MAJOR=42 \
 		vmlinux 
@@ -95,6 +94,7 @@ apr.exe: $(APREXE) $(INC)
 		$(APREXE) -DFILE_DISK_MAJOR=42 -o $@
 
 clean:
-	-rm -rf a-aio.out a.exe a.out apr.exe apr.out lkl lkl-nt lkl-aio include
+	-rm -rf a.sys a-aio.out a.exe a.out apr.exe apr.out lkl lkl-nt lkl-aio \
+		lkl-ntk include
 
 .force:
