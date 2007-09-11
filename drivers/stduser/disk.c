@@ -20,7 +20,7 @@ unsigned long _file_sectors(void)
 	sectors=ftell(f);
 	assert(sectors >= 0);
 
-        return sectors;
+        return sectors/512;
 }
 
 void _file_rw(void *_f, unsigned long sector, unsigned long nsect, char *buffer, int dir)
