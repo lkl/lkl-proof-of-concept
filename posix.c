@@ -4,6 +4,7 @@
 #include <time.h>
 #include <signal.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <asm/callbacks.h>
 
@@ -106,9 +107,12 @@ void linux_exit_idle(void)
 	pthread_mutex_unlock(&idle_sem.lock);
 }
 
-void linux_enter_idle(void)
+void linux_enter_idle(int halted)
 {
 	sigset_t sigmask;
+
+	if (halted)
+		return;
 
 	/*
 	 * Avoid deadlocks by blocking signals for idle thread. A few notes:
@@ -164,9 +168,15 @@ static void (*main_halt)(void);
 
 static void linux_posix_halt(void)
 {
+	/* 
+	 * It might take a while to terminate the threads because of the delay 
+	 * induce by the sync termination procedure. Unfortunatelly there is no
+	 * good way of waiting for them.
+	 */
+	while (debug_thread_count != 0)
+		sleep(1);
 	if (main_halt)
 		main_halt();
-	assert(debug_thread_count == 0);
 }
 
 void threads_init(struct linux_native_operations *lnops)

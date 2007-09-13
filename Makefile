@@ -2,7 +2,7 @@ CFLAGS=-g
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
-all: a.exe a.out apr.out a-aio.out a.sys
+all: a.exe a.out a-aio.out a.sys
 
 include/asm:
 	-mkdir `dirname $@`
@@ -68,8 +68,8 @@ APREXE=stduser-main.c $(DRV_STDUSER) apr.c lkl-nt/vmlinux
 ASYS = ntk.c $(DRV_NTK) lkl-ntk/vmlinux
 
 a.sys: $(ASYS) $(INC) 
-	i586-mingw32msvc-gcc -Wall -g -Iinclude -O2  -D_WIN32_WINNT=0x0500 \
-	$(ASYS) -Wl,--subsystem,native -Wl,--entry,_DriverEntry  -nostartfiles \
+	i586-mingw32msvc-gcc -Wall -s -Iinclude -D_WIN32_WINNT=0x0500 \
+	$(ASYS) -Wl,--subsystem,native -Wl,--entry,_DriverEntry@8  -nostartfiles \
 	-lntoskrnl -lhal -nostdlib -shared -DFILE_DISK_MAJOR=42 -o $@
 
 a-aio.out: $(AOUT-aio) $(INC)
