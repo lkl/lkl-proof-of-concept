@@ -114,8 +114,9 @@ void linux_enter_idle(void)
 
 	pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
 	pthread_mutex_lock(&idle_sem.lock);
-	if (idle_sem.count <= 0)
+	while (idle_sem.count <= 0)
 		pthread_cond_wait(&idle_sem.cond, &idle_sem.lock);
+	idle_sem.count --;
 	pthread_mutex_unlock(&idle_sem.lock);
 	pthread_sigmask(SIG_UNBLOCK, &sigmask, NULL);
 }
