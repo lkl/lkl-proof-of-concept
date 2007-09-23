@@ -8,8 +8,8 @@ struct completion_status {
 	int status;
 };
 
-void* _file_open(void);
-unsigned long _file_sectors(void);
+void* _file_open(const char *filename);
+unsigned long _file_sectors(void*);
 void _file_rw_async(void *f, unsigned long sector, unsigned long nsect, 
 		    char *buffer, int dir, struct completion_status *cs);
 

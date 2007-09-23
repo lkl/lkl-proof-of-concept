@@ -28,6 +28,8 @@ static irqreturn_t file_disk_irq(int irq, void *dev_id)
 	end_that_request_first(req, cs->status, req->hard_cur_sectors);
 	end_that_request_last(req, cs->status);
 
+	kfree(cs);
+
 	return IRQ_HANDLED;
 }
 
@@ -90,7 +92,7 @@ int file_disk_add_disk(const char *filename, int which, dev_t *devno)
 
 	memset (dev, 0, sizeof (struct file_disk_dev));
 
-        dev->f=_file_open();
+        dev->f=_file_open(filename);
 	BUG_ON(dev->f == NULL);
 
 	spin_lock_init(&dev->lock);
@@ -110,7 +112,7 @@ int file_disk_add_disk(const char *filename, int which, dev_t *devno)
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
 	snprintf (dev->gd->disk_name, 32, "fd:%s", filename);
-	set_capacity(dev->gd, _file_sectors());
+	set_capacity(dev->gd, _file_sectors(dev->f));
 
 	add_disk(dev->gd);
 

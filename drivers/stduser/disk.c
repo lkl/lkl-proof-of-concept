@@ -3,18 +3,17 @@
 
 #include "lkl/file_disk.h"
 
-void* _file_open(void)
+void* _file_open(const char *filename)
 {
-        return fopen("disk", "r+b");
+        return fopen(filename, "r+b");
 }
 
-unsigned long _file_sectors(void)
+unsigned long _file_sectors(void *_f)
 {
-        long sectors;
-        FILE* f=fopen("disk", "r");
+	FILE *f=(FILE*)_f;
 	int x;
+	long sectors;
 
-        assert(f > 0);
         x=fseek(f, 0, SEEK_END);
 	assert(x == 0);
 	sectors=ftell(f);

@@ -28,12 +28,12 @@ void mount_file(const char *filename, const char *fs)
 
 	/* create /mnt/filename */ 
 	assert(sys_mkdir("/mnt", 0700) == 0);
-	mnt=malloc(sizeof("/mnt/")+sizeof(filename)+1);
+	mnt=malloc(strlen("/mnt/")+strlen(filename)+1);
 	sprintf(mnt, "/mnt/%s", filename);
 	assert(sys_mkdir(mnt, 0700) == 0);
 
 	/* mount and chdir */
-	assert(sys_mount(dev_str, mnt, (char*)fs, 0, 0) == 0);
+	assert(sys_safe_mount(dev_str, mnt, (char*)fs, 0, 0) == 0);
 	assert(sys_chdir(mnt) == 0);
 }
 
