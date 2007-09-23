@@ -11,11 +11,10 @@
  */
 struct file_disk_dev {
 	void *f;
-        int size;                       /* Device size in sectors */
         spinlock_t lock;                /* For mutual exclusion */
         struct request_queue *queue;    /* The device request queue */
         struct gendisk *gd;             /* The gendisk structure */
-} file_disk_dev;
+};
 
 
 static void file_disk_request(request_queue_t *q)
@@ -40,7 +39,6 @@ static int file_disk_open(struct inode *inode, struct file *filp)
 {
 	struct file_disk_dev *dev = inode->i_bdev->bd_disk->private_data;
 
-        dev->f=_file_open();
 	filp->private_data = dev;
 	return 0;
 }
@@ -53,60 +51,58 @@ static struct block_device_operations file_disk_ops = {
 	.open 	         = file_disk_open,
 };
 
+static int major;
+
 /*
  * Set up our internal device.
  */
-void setup_device(struct file_disk_dev *dev, int which)
+int file_disk_add_disk(const char *filename, int which, dev_t *devno)
 {
-        unsigned long nsectors=_file_sectors();
+	struct file_disk_dev *dev=kmalloc(sizeof(*dev), GFP_KERNEL);
+
+	BUG_ON(dev == NULL);
 
 	memset (dev, 0, sizeof (struct file_disk_dev));
-	dev->size = nsectors*512;
+
+        dev->f=_file_open();
+	BUG_ON(dev->f == NULL);
+
 	spin_lock_init(&dev->lock);
 	
         dev->queue = blk_init_queue(file_disk_request, &dev->lock);
-        if (dev->queue == NULL)
-                return;
+	BUG_ON(dev->queue == NULL);
 
 	blk_queue_hardsect_size(dev->queue, 512);
 	dev->queue->queuedata = dev;
-	/*
-	 * And the gendisk structure.
-	 */
+
 	dev->gd = alloc_disk(1);
-	if (! dev->gd) {
-		printk (KERN_NOTICE "alloc_disk failure\n");
-                return;
-	}
-	dev->gd->major = FILE_DISK_MAJOR;
-	dev->gd->first_minor = which*1;
+	BUG_ON(dev->gd == NULL);
+
+	dev->gd->major = major;
+	dev->gd->first_minor = which;
 	dev->gd->fops = &file_disk_ops;
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
-	snprintf (dev->gd->disk_name, 32, "file_disk%c", which + 'a');
-	set_capacity(dev->gd, nsectors);
+	snprintf (dev->gd->disk_name, 32, "fd:%s", filename);
+	set_capacity(dev->gd, _file_sectors());
+
 	add_disk(dev->gd);
 
-	printk("initialized %s with major=%d\n", dev->gd->disk_name, dev->gd->major);
-	return;
+	printk("fd: initialized %s with dev=%d:%d\n", dev->gd->disk_name, dev->gd->major, dev->gd->first_minor);
+	*devno=new_encode_dev(MKDEV(dev->gd->major, dev->gd->first_minor));
+
+	return 0;
 }
 
-
-int __init file_disk_init(void)
+static int __init file_disk_init(void)
 {
-	int err;
-
-	err = register_blkdev(FILE_DISK_MAJOR, "file_disk");
-	if (err < 0) {
-		printk(KERN_ERR "file_disk: unable to register_blkdev major %d: %d\n", FILE_DISK_MAJOR, err);
+	major = register_blkdev(0, "fd");
+	if (major < 0) {
+		printk(KERN_ERR "fd: unable to register_blkdev: %d\n", major);
 		return -EBUSY;
 	}
 
-        setup_device(&file_disk_dev, 0);
-    
 	return 0;
 }
 
 late_initcall(file_disk_init);
-
-

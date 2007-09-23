@@ -24,35 +24,35 @@ include/linux:
 	-mkdir `dirname $@`
 	cp $^ $@
 
-INC=include/asm include/asm-generic include/asm-i386 include/linux
+INC=include/asm include/asm-generic include/asm-i386 include/linux 
 
 lkl-aio/vmlinux: .force lkl-aio/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl \
 		LKL_DRIVERS="$(HERE)/drivers/posix-aio/lkl/ $(HERE)/drivers/stduser/lkl" \
 		EXTRA_CFLAGS=-DNR_IRQS=2 \
-		STDIO_CONSOLE=y FILE_DISK_MAJOR=42 \
+		STDIO_CONSOLE=y \
 		vmlinux   	
 
 lkl/vmlinux: .force lkl/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl \
 		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
-		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
+		STDIO_CONSOLE=y FILE_DISK=y \
 		vmlinux
 
 lkl-nt/vmlinux: .force lkl-nt/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
 		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
-		STDIO_CONSOLE=y FILE_DISK=y FILE_DISK_MAJOR=42 \
+		STDIO_CONSOLE=y FILE_DISK=y \
 		vmlinux 
 
 lkl-ntk/vmlinux: .force lkl-ntk/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
 		LKL_DRIVERS="$(HERE)/drivers/ntk/lkl/ $(HERE)/drivers/stduser/lkl/" \
-		FILE_DISK=y FILE_DISK_MAJOR=42 \
+		FILE_DISK=y \
 		vmlinux 
 
 
@@ -70,31 +70,30 @@ ASYS = ntk.c $(DRV_NTK) lkl-ntk/vmlinux
 a.sys: $(ASYS) $(INC) 
 	i586-mingw32msvc-gcc -Wall -s -Iinclude -D_WIN32_WINNT=0x0500 \
 	$(ASYS) -Wl,--subsystem,native -Wl,--entry,_DriverEntry@8  -nostartfiles \
-	-lntoskrnl -lhal -nostdlib -shared -DFILE_DISK_MAJOR=42 -o $@
+	-lntoskrnl -lhal -nostdlib -shared -o $@
 
 a-aio.out: $(AOUT-aio) $(INC)
-	gcc -Wall -g -Iinclude $(AOUT-aio) -lpthread -lrt -DFILE_DISK_MAJOR=42 \
-		-o $@
+	gcc -Wall -g -Iinclude $(AOUT-aio) -lpthread -lrt -o $@
 
 a.out: $(AOUT) $(INC)
-	gcc -Wall -g -Iinclude $(AOUT) -lpthread -DFILE_DISK_MAJOR=42 -o $@
+	gcc -Wall -g -Iinclude $(AOUT) -lpthread -o $@
 
 apr.out: $(APROUT) $(INC)
 	gcc -Wall -g -Iinclude -I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE \
 		$(APROUT) -L/usr/lib/debug/usr/lib/libapr-1.so.0.2.7 -lapr-1 \
-		-DFILE_DISK_MAJOR=42 -o $@   
+		-o $@   
 
 a.exe: $(AEXE) $(INC)
-	i586-mingw32msvc-gcc -g -Wall -Iinclude $(AEXE) -DFILE_DISK_MAJOR=42 \
-		-o $@ 
+	i586-mingw32msvc-gcc -g -Wall -Iinclude $(AEXE) -o $@ 
 
 
 apr.exe: $(APREXE) $(INC)
 	i586-mingw32msvc-gcc -g -Wall -Iinclude -I/usr/include/apr-1.0/ \
-		$(APREXE) -DFILE_DISK_MAJOR=42 -o $@
+		$(APREXE) -o $@
 
 clean:
-	-rm -rf a.sys a-aio.out a.exe a.out apr.exe apr.out lkl lkl-nt lkl-aio \
-		lkl-ntk include
+	-rm -rf lkl lkl-nt lkl-aio lkl-ntk
+	-rm -f a.sys a-aio.out a.exe a.out apr.exe apr.out include/asm \
+		include/asm-i386  include/asm-generic include/asm-linux 
 
 .force:
