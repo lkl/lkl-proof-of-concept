@@ -51,8 +51,7 @@ lkl-nt/vmlinux: .force lkl-nt/.config
 lkl-ntk/vmlinux: .force lkl-ntk/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
-		LKL_DRIVERS="$(HERE)/drivers/ntk/lkl/ $(HERE)/drivers/stduser/lkl/" \
-		FILE_DISK=y \
+		LKL_DRIVERS=$(HERE)/drivers/ntk/lkl/ \
 		vmlinux 
 
 
@@ -95,5 +94,11 @@ clean:
 	-rm -rf lkl lkl-nt lkl-aio lkl-ntk
 	-rm -f a.sys a-aio.out a.exe a.out apr.exe apr.out include/asm \
 		include/asm-i386  include/asm-generic include/asm-linux 
+
+loop:
+	su -c 'chmod a+rw /dev/loop0; if ! [ -e /dev/sdk ]; then ln -s /dev/loop0 /dev/sdk; fi; losetup /dev/loop0 disk'
+
+unloop:
+	su -c 'losetup -d /dev/loop0'
 
 .force:

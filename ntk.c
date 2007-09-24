@@ -1,8 +1,18 @@
 #include <ddk/ntddk.h>
 #undef FASTCALL
+#include <linux/stat.h>
 #include <asm/callbacks.h>
 #include <asm/unistd.h>
 #undef FASTCALL
+
+#define assert(x) if (!(x)) { DbgPrint("Assert failed at %s:%d\n", __FILE__, __LINE__); while (1); }
+
+int lkl_disk_add_disk(const char *filename, int which, dev_t *devno);
+extern int snprintf(char * buf, size_t size, const char * fmt, ...)
+	__attribute__ ((format (printf, 3, 4)));
+extern int sprintf(char * buf, const char * fmt, ...)
+	__attribute__ ((format (printf, 2, 3)));
+
 
 struct _thread_info {
         HANDLE th;
@@ -102,10 +112,41 @@ void linux_mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
 	
 }
 
+void mount_file(const char *filename, const char *fs)
+{
+	dev_t dev;
+	char dev_str[]= { "/dev/xxxxxxxxxxxxxxxx" };
+	char *mnt;
+
+	assert(lkl_disk_add_disk(filename, 0, &dev) == 0);
+
+	/* create /dev/dev */
+	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", dev);
+	sys_unlink(dev_str);
+	assert(sys_mknod(dev_str, S_IFBLK|0600, dev) == 0);
+
+	/* create /mnt/filename */ 
+	assert(sys_mkdir("/mnt", 0700) == 0);
+	mnt=ExAllocatePool(PagedPool, strlen("/mnt/")+strlen(filename)+1);
+	sprintf(mnt, "/mnt/%s", filename);
+	assert(sys_mkdir(mnt, 0700) == 0);
+
+	/* mount and chdir */
+	assert(sys_safe_mount(dev_str, mnt, (char*)fs, 0, 0) == 0);
+	assert(sys_chdir(mnt) == 0);
+	
+	ExFreePool(mnt);
+}
+
 void linux_main(void)
 {
 	struct timespec ts = { .tv_sec = 1};
-	int fd=sys_open("/", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
+
+	//mount_file("\\DosDevices\\PhysicalDrive1", "ext3");
+	mount_file("\\Device\\FileDisk\\FileDisk0", "ext3");
+	
+
+	int fd=sys_open(".", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
 	if (fd >= 0) {
 		static char x[4096];
 		int count, reclen;
@@ -221,7 +262,7 @@ HANDLE lith;
 
 void DDKAPI linux_idle_thread(void *arg)
 {
-	linux_start_kernel(&lnops, "root=%d:0", FILE_DISK_MAJOR);
+	linux_start_kernel(&lnops, "");
 }
 
 NTSTATUS DDKAPI DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING registry)

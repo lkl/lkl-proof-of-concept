@@ -1,4 +1,13 @@
+#include <asm/callbacks.h>
 #include <ddk/ntddk.h>
+#include <ddk/ntdddisk.h>
+
+#include "lkl/disk.h"
+
+struct wdev {
+	FILE_OBJECT *file;
+	DEVICE_OBJECT *dev;
+};
 
 #define UNICODE_STRING_INIT(name, x) UNICODE_STRING name = { \
 	.Buffer = L##x, \
@@ -19,53 +28,162 @@ UNICODE_STRING* INIT_UNICODE(UNICODE_STRING *ustr, const char *str)
 
 #define KeBugOn(x) if (x) { DbgPrint("bug %s:%d\n", __FUNCTION__, __LINE__); while (1); }
 
-void* _file_open(void)
+void* lkl_disk_do_open(const char *filename)
 {
-	HANDLE f;
-	IO_STATUS_BLOCK isb;
-	OBJECT_ATTRIBUTES obj_attr;
+	NTSTATUS status;
 	UNICODE_STRING ustr;
+	struct wdev *dev;
 
-        INIT_UNICODE (&ustr, "\\DosDevices\\C:\\disk");
+	if (!(dev=ExAllocatePool(PagedPool, sizeof(*dev))))
+		return NULL;
 
-        InitializeObjectAttributes(&obj_attr, &ustr, OBJ_CASE_INSENSITIVE,0,0);
-        
+        INIT_UNICODE (&ustr, filename);
+	    
+	status = IoGetDeviceObjectPointer(&ustr, FILE_ALL_ACCESS,
+					  &dev->file, &dev->dev);
 
-        ZwOpenFile(&f, GENERIC_READ| GENERIC_WRITE, &obj_attr,
-		   &isb, FILE_SHARE_READ| FILE_SHARE_WRITE, 0);
+	KeBugOn(status != STATUS_SUCCESS);
 
-	KeBugOn(isb.Status != STATUS_SUCCESS);
-
-	return f;
+	return dev;
 }
 
-unsigned long _file_sectors(void)
+#define IOCTL_DISK_GET_LENGTH_INFO          CTL_CODE(IOCTL_DISK_BASE, 0x0017, METHOD_BUFFERED, FILE_READ_ACCESS) 
+
+unsigned long lkl_disk_get_sectors(void *_dev)
 {
-	HANDLE f=_file_open();
-	FILE_STANDARD_INFORMATION fsi;
+	struct wdev *dev=(struct wdev*)_dev;
+	GET_LENGTH_INFORMATION gli;
 	IO_STATUS_BLOCK isb;
+	NTSTATUS status;
+	KEVENT event;
+	IRP *irp;
 
-	ZwQueryInformationFile(f, &isb, &fsi, sizeof(fsi), FileStandardInformation);
+	KeInitializeEvent(&event, NotificationEvent, FALSE);
 
-	KeBugOn(isb.Status != STATUS_SUCCESS);
+	irp=IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_LENGTH_INFO, dev->dev,
+					  NULL, 0, &gli,
+					  sizeof(gli), FALSE, &event, &isb);
+	if (!irp) 
+		return 0;
 
-	ZwClose(f);
+	if (IoCallDriver(dev->dev, irp) != STATUS_PENDING) {
+		KeSetEvent(&event, 0, FALSE);
+		isb.Status = status;
+	}
 
-        return fsi.EndOfFile.QuadPart/512;
+	KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+
+	if (isb.Status != STATUS_SUCCESS)
+		return 0;
+	
+	return gli.Length.QuadPart/512;
 }
 
-void _file_rw(void *f, unsigned long sector, unsigned long nsect, char *buffer, int dir)
+#ifdef LKL_DISK_ASYNC
+NTSTATUS lkl_disk_completion(DEVICE_OBJECT *dev, IRP *irp, void *arg)
 {
-	IO_STATUS_BLOCK isb;
+	struct lkl_disk_cs *cs=(struct lkl_disk_cs*)arg;
+	IO_STATUS_BLOCK *isb=irp->UserIosb;
+	MDL *mdl;
+
+	DbgPrint("%s:%d: %d\n", __FUNCTION__, __LINE__, isb->Status);
+
+	if (isb->Status == STATUS_SUCCESS)
+		cs->status=LKL_DISK_CS_SUCCESS;
+	else
+		cs->status=LKL_DISK_CS_ERROR;
+	linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+
+	ExFreePool(isb);
+
+	while ((mdl = irp->MdlAddress)) {
+		DbgPrint("%s:%d\n", __FUNCTION__, __LINE__);
+		irp->MdlAddress = mdl->Next;
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+	}
+
+	if (irp->Flags & IRP_INPUT_OPERATION) {
+		DbgPrint("%s:%d\n", __FUNCTION__, __LINE__);
+		IO_STACK_LOCATION *isl = IoGetCurrentIrpStackLocation(irp);
+		RtlCopyMemory(irp->UserBuffer, irp->AssociatedIrp.SystemBuffer, isl->Parameters.Read.Length);
+	}
+
+	if (irp->Flags & IRP_DEALLOCATE_BUFFER) {
+		DbgPrint("%s:%d\n", __FUNCTION__, __LINE__);
+		ExFreePoolWithTag(irp->AssociatedIrp.SystemBuffer, '  oI');
+	}
+
+
+	DbgPrint("%s:%d\n", __FUNCTION__, __LINE__);
+	IoFreeIrp(irp);
+	DbgPrint("%s:%d\n", __FUNCTION__, __LINE__);
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+
+void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
+	      char *buffer, int dir, struct lkl_disk_cs *cs)
+
+{
+	struct wdev *dev=(struct wdev*)_dev;
+	IRP *irp;
+	IO_STATUS_BLOCK *isb;
 	LARGE_INTEGER offset = {
 		.QuadPart = sector*512,
 	};
-	
-	if (dir)
-		ZwWriteFile(f, 0, 0, 0, &isb, buffer, nsect*512, &offset, 0);
-	else
-		ZwReadFile(f, 0, 0, 0, &isb, buffer, nsect*512, &offset, 0);		
 
-	KeBugOn(isb.Status != STATUS_SUCCESS);
+	DbgPrint("%s:%d: dir=%d buffer=%p offset=%u nsect=%u\n", __FUNCTION__, __LINE__, dir, buffer, sector, nsect);
+
+	if (!(isb=ExAllocatePool(NonPagedPool, sizeof(*isb)))) {
+		cs->status=LKL_DISK_CS_ERROR;
+		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+		return;
+	}
+		
+	irp=IoBuildAsynchronousFsdRequest(dir?IRP_MJ_WRITE:IRP_MJ_READ,
+					  dev->dev, buffer, 0 /*nsect*512*/, &offset,
+					  isb);
+	if (!irp) {
+		ExFreePool(isb);
+		cs->status=LKL_DISK_CS_ERROR;
+		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+		return;
+	}
+
+	IoSetCompletionRoutine(irp, lkl_disk_completion, cs, TRUE, TRUE, TRUE);
+
+	IoCallDriver(dev->dev, irp);
+
 }
+#else
+int lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
+		   char *buffer, int dir)
+{
+	struct wdev *dev=(struct wdev*)_dev;
+	IRP *irp;
+	IO_STATUS_BLOCK isb;
+	KEVENT event;
+	NTSTATUS status;
+	LARGE_INTEGER offset = {
+		.QuadPart = sector*512,
+	};
 
+	KeInitializeEvent(&event, NotificationEvent, FALSE);
+
+	irp=IoBuildSynchronousFsdRequest(dir?IRP_MJ_WRITE:IRP_MJ_READ,
+					  dev->dev, buffer, nsect*512, &offset,
+					  &event, &isb);
+	if (!irp) 
+		return LKL_DISK_CS_ERROR;
+
+	if (IoCallDriver(dev->dev, irp) != STATUS_PENDING) {
+		KeSetEvent(&event, 0, FALSE);
+		isb.Status = status;
+	}
+
+	KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+	
+	return (isb.Status == STATUS_SUCCESS)?LKL_DISK_CS_SUCCESS:LKL_DISK_CS_ERROR;
+}
+#endif
