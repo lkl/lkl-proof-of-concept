@@ -46,7 +46,7 @@ lkl/vmlinux: .force lkl/.config
 lkl-nt/vmlinux: .force lkl-nt/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/`dirname $@` ARCH=lkl CROSS_COMPILE=i586-mingw32msvc- \
-		LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
+		EXTRA_CFLAGS=-gstabs+ LKL_DRIVERS=$(HERE)/drivers/stduser/lkl \
 		STDIO_CONSOLE=y FILE_DISK=y \
 		vmlinux 
 
@@ -85,7 +85,7 @@ apr.out: $(APROUT) $(INC)
 		-o $@   
 
 a.exe: $(AEXE) $(INC)
-	i586-mingw32msvc-gcc -g -Wall -Iinclude $(AEXE) -o $@ 
+	i586-mingw32msvc-gcc -gstabs+ -Wall -Iinclude $(AEXE) -o $@ 
 
 
 apr.exe: $(APREXE) $(INC)

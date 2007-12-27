@@ -142,9 +142,8 @@ unsigned long long linux_time(void)
 
 void linux_timer(unsigned long delta)
 {
-        unsigned long long delta_100ns=delta/100;
 	LARGE_INTEGER li = {
-		.QuadPart = delta_100ns,
+		.QuadPart = -((long)(delta/100)),
 	};
         
 	SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE);
@@ -152,7 +151,7 @@ void linux_timer(unsigned long delta)
 
 static void (*main_halt)(void);
 
-static void linux_windows_halt(void)
+static void linux_halt(void)
 {
 	/* 
 	 * It might take a while to terminate the threads because of the delay 
@@ -166,13 +165,55 @@ static void linux_windows_halt(void)
 		main_halt();
 }
 
-void threads_init(struct linux_native_operations *lnops)
+
+HANDLE syscall_sem;
+HANDLE syscall_sem_wait;
+
+void* linux_syscall_prepare(void)
+{
+        WaitForSingleObject(&syscall_sem, INFINITE);
+	return NULL;
+}
+
+void linux_syscall_wait(void *arg)
+{
+        WaitForSingleObject(syscall_sem_wait, INFINITE);
+        ReleaseSemaphore(syscall_sem, 1, NULL);
+}
+
+void linux_syscall_done(void *arg)
+{
+        ReleaseSemaphore(syscall_sem_wait, 1, NULL);
+}
+
+
+DWORD WINAPI lkl_init_thread(LPVOID arg)
+{
+	struct linux_native_operations *lnops=(struct linux_native_operations*)arg;
+	linux_start_kernel(lnops, "");
+	return 0;
+}
+
+HANDLE lkl_init_sem;
+
+static int (*main_init)(void);
+
+int linux_init(void)
+{
+	int ret=main_init();
+	ReleaseSemaphore(lkl_init_sem, 1, NULL);
+	return ret;
+}
+
+void threads_init(struct linux_native_operations *lnops, int (*init)(void))
 {
 	SYSTEMTIME st;
 	FILETIME ft;
+	HANDLE init_thread;
 
 	main_halt=lnops->halt;
-	lnops->halt=linux_windows_halt;
+	lnops->halt=linux_halt;
+	main_init=init;
 
 	lnops->thread_info_alloc=linux_thread_info_alloc;
 	lnops->new_thread=linux_new_thread;
@@ -191,4 +232,16 @@ void threads_init(struct linux_native_operations *lnops)
 	basetime.HighPart = ft.dwHighDateTime;
         lnops->timer=linux_timer;
 	timer=CreateWaitableTimer(NULL, FALSE, NULL);
+
+        syscall_sem_wait=CreateSemaphore(NULL, 0, 100, NULL);
+        syscall_sem=CreateSemaphore(NULL, 1, 100, NULL);
+	lnops->syscall_prepare=linux_syscall_prepare;
+	lnops->syscall_wait=linux_syscall_wait;
+	lnops->syscall_done=linux_syscall_done;
+
+	lkl_init_sem=CreateSemaphore(NULL, 0, 100, NULL);
+	lnops->init=linux_init;
+        init_thread=CreateThread(NULL, 0, lkl_init_thread, lnops, 0, NULL);
+        WaitForSingleObject(lkl_init_sem, INFINITE);
 }
+

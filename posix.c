@@ -166,7 +166,7 @@ void linux_timer(unsigned long delta)
 
 static void (*main_halt)(void);
 
-static void linux_posix_halt(void)
+static void linux_halt(void)
 {
 	/* 
 	 * It might take a while to terminate the threads because of the delay 
@@ -179,10 +179,51 @@ static void linux_posix_halt(void)
 		main_halt();
 }
 
-void threads_init(struct linux_native_operations *lnops)
+pthread_mutex_t syscall_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t syscall_mutex_wait = PTHREAD_MUTEX_INITIALIZER;
+
+void* linux_syscall_prepare(void)
 {
+	pthread_mutex_lock(&syscall_mutex);
+	return NULL;
+}
+
+void linux_syscall_wait(void *arg)
+{
+	pthread_mutex_lock(&syscall_mutex_wait);
+	pthread_mutex_unlock(&syscall_mutex);
+}
+
+void linux_syscall_done(void *arg)
+{
+	pthread_mutex_unlock(&syscall_mutex_wait);
+}
+
+void* lkl_init_thread(void *arg)
+{
+	struct linux_native_operations *lnops=(struct linux_native_operations*)arg;
+	linux_start_kernel(lnops, "");
+	return NULL;
+}
+
+pthread_mutex_t lkl_init_mutex=PTHREAD_MUTEX_INITIALIZER;
+
+static int (*main_init)(void);
+
+int linux_init(void)
+{
+	int ret=main_init();
+	pthread_mutex_unlock(&lkl_init_mutex);
+	return ret;
+}
+
+void threads_init(struct linux_native_operations *lnops, int (*init)(void))
+{
+	pthread_t init_thread;
+
 	main_halt=lnops->halt;
-	lnops->halt=linux_posix_halt;
+	lnops->halt=linux_halt;
+	main_init=init;
 
 	lnops->thread_info_alloc=linux_thread_info_alloc;
 	lnops->new_thread=linux_new_thread;
@@ -197,6 +238,14 @@ void threads_init(struct linux_native_operations *lnops)
         lnops->timer=linux_timer;
         signal(SIGALRM, sigalrm);
 
+	pthread_mutex_lock(&syscall_mutex_wait);
+	lnops->syscall_prepare=linux_syscall_prepare;
+	lnops->syscall_wait=linux_syscall_wait;
+	lnops->syscall_done=linux_syscall_done;
 
+	pthread_mutex_lock(&lkl_init_mutex);
+	lnops->init=linux_init;
+        pthread_create(&init_thread, NULL, lkl_init_thread, lnops);
+	pthread_mutex_lock(&lkl_init_mutex);
 }
 
