@@ -9,36 +9,11 @@
 #include <linux/stat.h>
 #include <asm/unistd.h>
 #include <asm/callbacks.h>
-
-static struct linux_native_operations lnops;
-
-static long linux_panic_blink(long time)
-{
-        assert(0);
-        return 0;
-}
-
-static void *_phys_mem;
-
-static void linux_mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
-{
-        *phys_mem_size=256*1024*1024;
-        *phys_mem=(unsigned long)malloc(*phys_mem_size);
-}
-
-static void linux_halt(void)
-{
-	free(_phys_mem);
-}
-
-extern void threads_init(struct linux_native_operations *lnops, int (*init)(void));
-
-static struct linux_native_operations lnops = {
-	.panic_blink = linux_panic_blink,
-	.mem_init = linux_mem_init,
-	.halt = linux_halt
-};
-
+#include <linux/if.h>
+#include <linux/net.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <linux/if_addr.h>
 
 static dev_t dev;
 
@@ -46,7 +21,11 @@ int file_disk_add_disk(const char *filename, int which, dev_t *devno);
 
 int init(void)
 {
-	return file_disk_add_disk("disk", 0, &dev);
+	FILE *f=fopen("disk", "r");
+	dev=lkl_disk_add_disk(f, "disk", 0, 10000);
+	if (dev != 0)
+		return 0;
+	return -1;
 }
 
 void mount_disk(const char *filename, const char *fs)
@@ -70,9 +49,10 @@ void mount_disk(const char *filename, const char *fs)
 	assert(lkl_sys_chdir(mnt) == 0);
 }
 
+
 int main(void)
 {
-	threads_init(&lnops, init); 
+	lkl_env_init(init);
 
 	mount_disk("disk", "ext3");
 	
@@ -101,7 +81,6 @@ int main(void)
 		printf("Shutdown in %d \r", i); fflush(stdout);
 		lkl_sys_nanosleep(&ts, NULL);
 	}
-
 
 	lkl_sys_halt();
 
