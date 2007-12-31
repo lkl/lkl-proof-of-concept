@@ -1,10 +1,7 @@
-
-
-CFLAGS=-g
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
-all: a.exe a.out a-aio.out a.sys
+all: vfs.posix vfs.apr vfs.nt net.linux vfs.ntk
 
 include/asm:
 	-mkdir `dirname $@`
@@ -24,27 +21,57 @@ include/linux:
 
 INC=include/asm include/asm-generic include/asm-i386 include/linux 
 
-%.vmlinux %.env: %.config  
-	mkdir -p $(patsubst %.config,%,$<) && \
-	cp $< $(patsubst %.config,%,$<)/.config && \
+CFLAGS=-Wall -g
+
+ENVS=posix linux apr nt ntk
+
+nt_CROSS=i586-mingw32msvc-
+nt_EXTRA_CFLAGS=-gstabs+
+
+ntk_CROSS=i586-mingw32msvc-
+ntk_LD_FLAGS=-Wl,--subsystem,native -Wl,--entry,_DriverEntry@8 -nostartfiles \
+		-lntoskrnl -lhal -nostdlib -shared
+ntk_EXTRA_CFLAGS=-gstabs+ -D_WIN32_WINNT=0x0500
+
+posix_LD_FLAGS=-lpthread
+
+linux_LD_FLAGS=-lpthread
+
+apr_EXTRA_CFLAGS=-I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE
+apr_LD_FLAGS=vfs_apr.c -L/usr/lib/debug/usr/lib -lapr-1
+
+%/.config: %.config 
+	mkdir -p $* && \
+	cp $< $@
+
+%/vmlinux: %/.config 
 	cd $(LINUX) && \
-	$(MAKE) O=$(HERE)/$(patsubst %.config,%,$<) ARCH=lkl && \
-	cd $(HERE) && \
-	cp $(patsubst %.config,%,$<)/vmlinux $(patsubst %.config,%,$<).vmlinux &&	\
-	cp $(patsubst %.config,%,$<)/env.a $(patsubst %.config,%,$<).env	
+	$(MAKE) O=$(HERE)/$* ARCH=lkl \
+	CROSS_COMPILE=$($*_CROSS) \
+	EXTRA_CFLAGS="$($*_EXTRA_CFLAGS) $(CFLAGS)" \
+	vmlinux
 
-VFS = vfs.c posix.vmlinux posix.env 
-NET = net.c linux.vmlinux linux.env
+%/env.a: %/.config 
+	cd $(LINUX) && \
+	$(MAKE) O=$(HERE)/$* ARCH=lkl \
+	CROSS_COMPILE=$($*_CROSS) \
+	EXTRA_CFLAGS="$($*_EXTRA_CFLAGS) $(CFLAGS)" \
+	env.a
 
-vfs: $(VFS) $(INC)
-	gcc -Wall -g -Iinclude $(VFS) -lpthread -o $@
+define env_template
 
-net: $(NET) $(INC)
-	gcc -Wall -g -Iinclude $(NET) -lpthread -o $@
+.PRECIOUS: $(1)/.config $(1)/vmlinux $(1)/env.a
+
+%.$(1): %.c $(1)/vmlinux $(1)/env.a $(INC)
+	$($(1)_CROSS)gcc $$(CFLAGS) $($(1)_EXTRA_CFLAGS) -Iinclude -I$(1)/include $$*.c $(1)/vmlinux $(1)/env.a $($(1)_LD_FLAGS) -o $$@
+endef
+
+$(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
 
 clean:
-	-rm -rf lkl lkl-nt lkl-aio lkl-ntk
-	-rm -f a.sys a-aio.out a.exe a.out apr.exe apr.out include/asm \
-		include/asm-i386  include/asm-generic include/asm-linux 
+	-rm -rf apr linux posix nt ntk 
+	-rm -f include/asm include/asm-i386 include/asm-generic include/linux	
+	-rmdir include
+	-rm -f $(patsubst %,*.%,$(ENVS))
 
-.force:
+
