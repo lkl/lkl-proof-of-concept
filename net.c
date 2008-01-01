@@ -3,17 +3,16 @@
 #include <assert.h>
 #include <string.h>
 #include <malloc.h>
+#include <time.h>
 
-
-#undef __GLIBC__
-#include <linux/stat.h>
-#include <asm/unistd.h>
-#include <asm/callbacks.h>
+#include <asm/lkl.h>
+#include <linux/in.h>
 #include <linux/if.h>
 #include <linux/net.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/if_addr.h>
+#include <linux/sockios.h>
 #include <asm/eth.h>
 #include <asm/env.h>
 #include <asm/byteorder.h>
@@ -25,21 +24,13 @@ int ifindex;
 
 int init(void)
 {
-	char mac[]={0x00,0x0E,0x35,0xE5,0xD5,0x0C};//
+//	char mac[]={0x00,0x0E,0x35,0xE5,0xD5,0x0C};
+//	char mac[]={0x00,0x11,0x43,0x4D,0x35,0x7C};
+	char mac[]={0,1,2,3,4,5};
 
-	ifindex=lkl_add_eth(mac, 21);
+	ifindex=lkl_add_eth(mac, 22);
 	return 0;
 }
-
-enum sock_type {
-	SOCK_STREAM	= 1,
-	SOCK_DGRAM	= 2,
-	SOCK_RAW	= 3,
-	SOCK_RDM	= 4,
-	SOCK_SEQPACKET	= 5,
-	SOCK_DCCP	= 6,
-	SOCK_PACKET	= 10,
-};
 
 #define NLMSG_TAIL(nmsg) \
 	((struct rtattr *) (((void *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
@@ -164,15 +155,22 @@ void route_add(void)
 	lkl_sys_close(sock);
 }
 
-
+#define LKL
 
 int main(void)
 {
+#ifdef LKL
 	lkl_env_init(init, 16*1024*1024);
 
 	if_up();
 	ip_add();
 	route_add();
+#else
+#define lkl_sys_socket socket
+#define lkl_sys_connect connect
+#define lkl_sys_read read
+#define lkl_sys_write write 
+#endif
 
 	int err, sock=lkl_sys_socket(PF_INET, SOCK_STREAM, 0);
 	printf("%s: sock=%d\n", __FUNCTION__, sock);
@@ -205,7 +203,9 @@ int main(void)
 		}
 	}
 
+#ifdef LKL
 	lkl_sys_halt();
+#endif
 
         return 0;
 }

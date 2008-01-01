@@ -38,7 +38,7 @@ posix_LD_FLAGS=-lpthread
 linux_LD_FLAGS=-lpthread
 
 apr_EXTRA_CFLAGS=-I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE
-apr_LD_FLAGS=vfs_apr.c -L/usr/lib/debug/usr/lib -lapr-1
+apr_LD_FLAGS=-L/usr/lib/debug/usr/lib -lapr-1
 
 %/.config: %.config 
 	mkdir -p $* && \
