@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
@@ -91,6 +92,7 @@ void umount_disk(void)
 
 int main(int argc, char **argv, char **env)
 {
+	int fd, i, tmp;
 #ifdef CONFIG_LKL_ENV_APR
 	apr_init();
 #endif
@@ -98,7 +100,15 @@ int main(int argc, char **argv, char **env)
 
 	mount_disk("disk", "ext3");
 
-	int fd=lkl_sys_open(".", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
+
+	fd=lkl_sys_open("CREDITS", O_RDONLY, 0);
+	char buffer[5098];
+	while ((tmp=lkl_sys_read(fd, buffer, sizeof(buffer))) > 0) {
+		write(1, buffer, tmp);
+	}
+	lkl_sys_close(fd);
+
+	fd=lkl_sys_open(".", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
 	if (fd >= 0) {
 		char x[4096];
 		int count, reclen;
@@ -116,6 +126,7 @@ int main(int argc, char **argv, char **env)
 
 		lkl_sys_close(fd);
 	}
+
 
 	/* test timers */
 	struct __kernel_timespec ts = { .tv_sec = 1};

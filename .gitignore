@@ -9,6 +9,7 @@ nt
 posix
 linux
 ntk
+apr
 *~
 include/*
 *.o
@@ -16,5 +17,6 @@ include/*
 built-in.mod.c
 *.env
 *.vmlinux
-vfs
-net
+vfs.*
+net.*
+
