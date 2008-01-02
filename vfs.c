@@ -64,7 +64,7 @@ void file_close(void *f)
 int init(void)
 {
 	f=file_open("disk");
-	dev=lkl_disk_add_disk(f, "disk", 0, 20480000);
+	dev=lkl_disk_add_disk(f, 20480000);
 	if (dev != 0)
 		return 0;
 	return -1;
