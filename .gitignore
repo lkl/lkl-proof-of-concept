@@ -17,6 +17,9 @@ include/*
 built-in.mod.c
 *.env
 *.vmlinux
-vfs.*
-net.*
+vfs.posix
+vfs.apr
+vfs.nt
+vfs.ntk
+net.linux
 
