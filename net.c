@@ -1,200 +1,283 @@
-#define _NO_OLDNAMES
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
 #include <malloc.h>
 #include <time.h>
+#include <argp.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <net/if.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netinet/ether.h>
 
-#include <asm/lkl.h>
-#include <linux/in.h>
-#include <linux/if.h>
-#include <linux/net.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#include <linux/if_addr.h>
-#include <linux/sockios.h>
-#include <asm/eth.h>
 #include <asm/env.h>
-#include <asm/byteorder.h>
+#include <asm/eth.h>
 
-#define htonl(x) __cpu_to_be32(x)
-#define htons(x) __cpu_to_be16(x)
+const char *argp_program_version = "0.1";
+const char *argp_program_bug_address = "tavi@cs.pub.ro";
+static char doc[] = "";
+static char args_doc[] = "URL";
+static struct argp_option options[] = {
+    {"interface", 'i', "string", 0, "native interface to use"},
+    {"mac", 'm', "mac address", 0, "MAC address for the lkl interface"},
+    {"address", 'a', "IPv4 address", 0, "IPv4 address for the lkl interface"},
+    {"netmask-length", 'n', "int", 0, "IPv4 netmask length for the lkl interface"},
+    {"gateway", 'g', "IPv4 address", 0, "IPv4 gateway for lkl"},
+    {"lkl", 'l', 0, 0, "Use LKL"},
+    {0},
+};
 
-int ifindex;
+typedef struct cl_args_ {
+	struct ether_addr *mac;
+	const char *iface, *request;
+	struct in_addr address, gateway, host;
+	unsigned int netmask_len, port, lkl;
+} cl_args_t;
 
-int init(void)
+cl_args_t cla = {
+	.port = 80,
+};
+
+
+static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-//	char mac[]={0x00,0x0E,0x35,0xE5,0xD5,0x0C};
-//	char mac[]={0x00,0x11,0x43,0x4D,0x35,0x7C};
-	char mac[]={0,1,2,3,4,5};
-
-	ifindex=lkl_add_eth(mac, 22);
-	return 0;
-}
-
-#define NLMSG_TAIL(nmsg) \
-	((struct rtattr *) (((void *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
-
-int addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
-	      int alen)
-{
-	int len = RTA_LENGTH(alen);
-	struct rtattr *rta;
-
-	if (NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len) > maxlen) {
-		fprintf(stderr, "addattr_l ERROR: message exceeded bound of %d\n",maxlen);
-		return -1;
+	cl_args_t *cla = state->input;
+	switch (key) {
+	case 'm':
+	{
+		cla->mac=ether_aton(arg);
+		if (!cla->mac) {
+			printf("bad MAC address: %s\n", arg);
+			return -1;
+		}
+		break;
 	}
-	rta = NLMSG_TAIL(n);
-	rta->rta_type = type;
-	rta->rta_len = len;
-	memcpy(RTA_DATA(rta), data, alen);
-	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len);
-	return 0;
-}
-
-void if_up(void)
-{
-	struct ifreq ifr;
-	int err, sock = lkl_sys_socket(PF_INET, SOCK_DGRAM, 0);
-	printf("%s: sock=%d\n", __FUNCTION__, sock);
-
-	strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
-	lkl_sys_ioctl(sock, SIOCGIFFLAGS, (long)&ifr);
-	ifr.ifr_flags |= IFF_UP;
-	err=lkl_sys_ioctl(sock, SIOCSIFFLAGS, (long)&ifr);
-	printf("%s: err=%d\n", __FUNCTION__, err);
-	lkl_sys_close(sock);
-}
-
-void ip_add(void)
-{
-	struct {
-		struct nlmsghdr 	n;
-		struct ifaddrmsg 	ifa;
-		char   			buf[256];
-	} req;
-	int err, sock=lkl_sys_socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-	printf("%s: sock=%d\n", __FUNCTION__, sock);
-
-	memset(&req, 0, sizeof(req));
-	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE|NLM_F_EXCL;
-	req.n.nlmsg_type = RTM_NEWADDR;
-
-	req.ifa.ifa_family = AF_INET;
-	req.ifa.ifa_prefixlen = 24;
-	req.ifa.ifa_scope = 0;
-	req.ifa.ifa_index = ifindex;
-
-	int addr=htonl((192<<24)+(168<<16)+(1<<8)+100);
-	addattr_l(&req.n, sizeof(req), IFA_LOCAL, &addr, sizeof(addr));
-	int brd=htonl(0x01ffffff);
-	addattr_l(&req.n, sizeof(req), IFA_BROADCAST, &brd, sizeof(brd));
-
-	err=lkl_sys_send(sock, &req, sizeof(req), 0);
-	printf("%s: err=%d\n", __FUNCTION__, err);
-
-	lkl_sys_close(sock);
-}
-
-
-int addattr32(struct nlmsghdr *n, int maxlen, int type, __u32 data)
-{
-	int len = RTA_LENGTH(4);
-	struct rtattr *rta;
-	if (NLMSG_ALIGN(n->nlmsg_len) + len > maxlen) {
-		fprintf(stderr,"addattr32: Error! max allowed bound %d exceeded\n",maxlen);
-		return -1;
+	case 'a':
+	{
+		struct hostent *hostinfo =gethostbyname(arg);
+		if (!hostinfo) {
+			printf("unknown host %s\n", arg);
+			return -1;
+		}
+		cla->address=*(struct in_addr*)hostinfo->h_addr;
+		break;
 	}
-	rta = NLMSG_TAIL(n);
-	rta->rta_type = type;
-	rta->rta_len = len;
-	memcpy(RTA_DATA(rta), &data, 4);
-	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + len;
+	case 'g':
+	{
+		struct hostent *hostinfo =gethostbyname(arg);
+		if (!hostinfo) {
+			printf("unknown host %s\n", arg);
+			return -1;
+		}
+		cla->gateway=*(struct in_addr*)hostinfo->h_addr;
+		break;
+	}
+	case 'n':
+	{
+		cla->netmask_len=atoi(arg);
+		if (cla->netmask_len <= 0 || cla->netmask_len >=31) {
+			printf("bad netmask length %d\n", cla->netmask_len);
+			return -1;
+		}
+		break;
+	}
+
+	case 'i':
+	{
+		if (if_nametoindex(arg) < 0) {
+			printf("invalid interface: %s\n", arg);
+			return -1;
+		}
+		cla->iface=arg;
+		break;
+	}
+	case 'l':
+	{
+		cla->lkl=1;
+		break;
+	}
+	case ARGP_KEY_ARG:
+	{
+		char *host, *request, *port;
+		struct hostent *hostinfo;
+
+		//URL: http://host:port/request 
+		if (strncasecmp("http://", arg, sizeof("http://")-1) != 0) {
+			printf("bad url: %s\n", arg);
+			return -1;
+		}
+
+		host=arg+sizeof("http://")-1;
+		request=strchr(host, '/');
+		port=strchr(host, ':');
+
+		if (port && request && port < request) {
+			char tmp[request-port];
+			memcpy(tmp, port+1, sizeof(tmp));
+			tmp[sizeof(tmp)]=0;
+			cla->port=atoi(tmp);
+		}
+
+		if (!request)
+			cla->request="";
+		else
+			cla->request=request+1;
+
+		if (port)
+			*port=0;
+		else if (request)
+			*request=0;
+
+		hostinfo = gethostbyname(host);
+		if (!hostinfo) {
+			printf("unknown host %s\n", host);
+			return -1;
+		}
+		cla->host=*(struct in_addr*)hostinfo->h_addr;
+		break;
+	}
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
 	return 0;
 }
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 
-void route_add(void)
+int do_connect(int fd, const struct sockaddr *saddr, socklen_t slen)
 {
-	struct {
-		struct nlmsghdr 	n;
-		struct rtmsg 		r;
-		char   			buf[1024];
-	} req;
-	int err, sock=lkl_sys_socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-	printf("%s: sock=%d\n", __FUNCTION__, sock);
-
-
-	memset(&req, 0, sizeof(req));
-
-	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST|NLM_F_CREATE|NLM_F_EXCL;
-	req.n.nlmsg_type = RTM_NEWROUTE;
-	req.r.rtm_family = AF_INET;
-	req.r.rtm_table = RT_TABLE_MAIN;
-	req.r.rtm_scope = RT_SCOPE_NOWHERE;
-
-	req.r.rtm_protocol = RTPROT_BOOT;
-	req.r.rtm_scope = RT_SCOPE_UNIVERSE;
-	req.r.rtm_type = RTN_UNICAST;
-
-	int gateway=htonl((192<<24)+(168<<16)+(1<<8)+1);
-	addattr_l(&req.n, sizeof(req), RTA_GATEWAY, &gateway, sizeof(gateway));
-
-	int dst=0;
-	req.r.rtm_dst_len = 0;
-	addattr_l(&req.n, sizeof(req), RTA_DST, &dst, sizeof(dst));
-
-	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
-
-	err=lkl_sys_send(sock, &req, sizeof(req), 0);
-	printf("%s: err=%d\n", __FUNCTION__, err);
-
-	lkl_sys_close(sock);
+	if (cla.lkl)
+		return lkl_sys_connect(fd, (struct sockaddr*)saddr, slen);
+	else
+		return connect(fd, saddr, slen);
 }
 
-#define LKL
-
-int main(void)
+int do_socket(int family, int type, int protocol)
 {
-#ifdef LKL
-	lkl_env_init(init, 16*1024*1024);
+	if (cla.lkl)
+		return lkl_sys_socket(family, type, protocol);
+	else
+		return socket(family, type, protocol);
+}
 
-	if_up();
-	ip_add();
-	route_add();
-#else
-#define lkl_sys_socket socket
-#define lkl_sys_connect connect
-#define lkl_sys_read read
-#define lkl_sys_write write 
-#endif
+ssize_t do_read(int fd, void *buf, size_t len)
+{
+	if (cla.lkl)
+		return lkl_sys_read(fd, buf, len);
+	else
+		return read(fd, buf, len);
+}
 
-	int err, sock=lkl_sys_socket(PF_INET, SOCK_STREAM, 0);
-	printf("%s: sock=%d\n", __FUNCTION__, sock);
-	
+ssize_t do_write(int fd, const void *buf, size_t len)
+{
+	if (cla.lkl)
+		return lkl_sys_write(fd, buf, len);
+	else
+		return write(fd, buf, len);
+}
+
+#define get_error(err) (cla.lkl?-err:errno)
+
+static int do_full_write(int fd, const char *buffer, int length)
+{
+	int n, todo=length;
+
+	while (todo && (n=do_write(fd, buffer, todo)) >=  0) {
+		todo-=n;
+		buffer+=n;
+	}
+
+	if (!todo)
+		return length;
+	else
+		return n;
+}
+
+int main(int argc, char **argv)
+{
+	int err, sock;
 	struct sockaddr_in saddr = {
 		.sin_family = AF_INET,
-		.sin_port = htons(80),
-		.sin_addr.s_addr = htonl((192<<24)+(168<<16)+(1<<8)+7)
-//		.sin_addr.s_addr = htonl((141<<24)+(85<<16)+(37<<8)+30)
 	};
+	char req[1024], buffer[4096];
 
-	err=lkl_sys_connect(sock, (struct sockaddr*)&saddr, sizeof(saddr));
-	printf("%s: err=%d\n", __FUNCTION__, err);				   
+	if (argp_parse(&argp, argc, argv, 0, 0, &cla) < 0)
+		return -1;
 
-//	char req[]="GET /~tavi/asdf/asf/incoming/BT/Gli%20indesiderabili%20-%20Scimeca%202003.mpeg HTTP/1.0\r\n\r\n";
-	char req[]="GET /~tavi/big HTTP/1.0\r\n\r\n";
-	err=lkl_sys_write(sock, req, sizeof(req));
-	printf("%s: err=%d\n", __FUNCTION__, err);				   
+	if (!cla.host.s_addr) {
+		printf("no url specified!\n");
+		return -1;
+	}
+		
 
-	char buffer[4096];
+	if (cla.lkl) {
+		int ifindex;       
+
+		if (!cla.iface || !cla.mac || !cla.netmask_len ||
+		    !cla.address.s_addr || !cla.gateway.s_addr) {
+			printf("lkl mode and no interface, mac, address, netmask length or gateway specified!\n");
+			return -1;
+		}
+
+
+		if (lkl_env_init(16*1024*1024) < 0)
+			return -1;
+		
+		if ((ifindex=lkl_add_eth(cla.iface, (char*)cla.mac, 32)) == 0) 
+			return -1;
+			
+		if ((err=lkl_if_set_ipv4(ifindex, cla.address.s_addr,
+					 cla.netmask_len)) < 0) {
+			printf("failed to set IP: %s/%d: %s\n",
+			       inet_ntoa(cla.address), cla.netmask_len,
+					 strerror(-err));
+			return -1;
+		}
+
+		if ((err=lkl_if_up(ifindex)) < 0) {
+			printf("failed to bring interface up: %s\n", strerror(-err));
+			return -1;
+		}
+
+		if ((err=lkl_set_gateway(cla.gateway.s_addr))) {
+			printf("failed to set gateway %s: %s\n",
+			       inet_ntoa(cla.gateway), strerror(-err));
+			return -1;
+		}
+	}
+	
+	
+	if ((sock=do_socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+		printf("can't create socket: %s\n", strerror(get_error(sock)));
+		return -1;
+	}
+	
+	saddr.sin_port = htons(cla.port);
+	saddr.sin_addr = cla.host;
+
+	if ((err=do_connect(sock, (struct sockaddr*)&saddr,
+			    sizeof(saddr))) < 0) {
+		printf("can't connect to %s:%u: %s\n",
+		       inet_ntoa(cla.host), ntohl(saddr.sin_port), 
+		       strerror(get_error(err)));
+		return -1;
+	}
+
+	snprintf(req, sizeof(req), "GET /%s HTTP/1.0\r\n\r\n", cla.request);
+
+	if ((err=do_full_write(sock, req, sizeof(req))) < 0) {
+		printf("can't write: %s\n", strerror(get_error(err)));
+		return -1;
+	}
 
 	#define SAMPLE_RATE 1
 	unsigned long total=0, last_time=time(NULL), last_bytes=0;
-	while ((err=lkl_sys_read(sock, buffer, sizeof(buffer))) > 0) {
+	while ((err=do_read(sock, buffer, sizeof(buffer))) > 0) {
+		write(1, buffer, err);
 		total+=err;
 		if (time(NULL)-last_time >= SAMPLE_RATE) {
 			printf("%ld %ld\n", total, (total-last_bytes)/SAMPLE_RATE);
@@ -203,9 +286,8 @@ int main(void)
 		}
 	}
 
-#ifdef LKL
-	lkl_sys_halt();
-#endif
+	if (cla.lkl)
+		lkl_sys_halt();
 
         return 0;
 }

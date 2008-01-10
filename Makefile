@@ -1,7 +1,8 @@
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
-all: vfs.posix vfs.apr vfs.nt net.linux vfs.ntk
+all: vfs.posix vfs.apr vfs.nt net.linux 
+#vfs.ntk
 
 include/asm:
 	-mkdir `dirname $@`
@@ -36,6 +37,7 @@ ntk_EXTRA_CFLAGS=-gstabs+ -D_WIN32_WINNT=0x0500
 posix_LD_FLAGS=-lpthread
 
 linux_LD_FLAGS=-lpthread
+#linux_CROSS=/opt/cegl-2.0/powerpc-750-linux-gnu/gcc-3.3.4-glibc-2.3.3/bin/powerpc-750-linux-gnu-
 
 apr_EXTRA_CFLAGS=-I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE
 apr_LD_FLAGS=-L/usr/lib/debug/usr/lib -lapr-1

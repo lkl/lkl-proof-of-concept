@@ -61,18 +61,15 @@ void file_close(void *f)
 }
 #endif
 
-int init(void)
-{
-	f=file_open("disk");
-	dev=lkl_disk_add_disk(f, 20480000);
-	if (dev != 0)
-		return 0;
-	return -1;
-}
 
 void mount_disk(const char *filename, const char *fs)
 {
 	char dev_str[]= { "/dev/xxxxxxxxxxxxxxxx" };
+
+	f=file_open("disk");
+	assert(f != NULL);
+	dev=lkl_disk_add_disk(f, 20480000);
+	assert(dev != 0);
 
 	/* create /dev/dev */
 	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", dev);
@@ -96,7 +93,7 @@ int main(int argc, char **argv, char **env)
 #ifdef CONFIG_LKL_ENV_APR
 	apr_init();
 #endif
-	lkl_env_init(init, 16*1024*1024);
+	lkl_env_init(16*1024*1024);
 
 	mount_disk("disk", "ext3");
 
