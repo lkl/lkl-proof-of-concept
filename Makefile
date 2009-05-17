@@ -53,19 +53,19 @@ apr_LD_FLAGS:=`apr-1-config --link-ld --libs`
 	EXTRA_CFLAGS="$($*_EXTRA_CFLAGS) $(CFLAGS)" \
 	vmlinux
 
-%/env.a: %/.config 
+%/lkl.a: %/.config
 	cd $(LINUX) && \
 	$(MAKE) O=$(HERE)/$* ARCH=lkl \
 	CROSS_COMPILE=$($*_CROSS) \
 	EXTRA_CFLAGS="$($*_EXTRA_CFLAGS) $(CFLAGS)" \
-	env.a
+	lkl.a
 
 define env_template
 
-.PRECIOUS: $(1)/.config $(1)/vmlinux $(1)/env.a
+.PRECIOUS: $(1)/.config $(1)/vmlinux $(1)/lkl.a
 
-%.$(1): %.c $(1)/vmlinux $(1)/env.a $(INC)
-	$($(1)_CROSS)gcc $$(CFLAGS) $($(1)_EXTRA_CFLAGS) -Iinclude -I$(1)/include $$*.c $(1)/vmlinux $(1)/env.a $($(1)_LD_FLAGS) -o $$@
+%.$(1): %.c $(1)/vmlinux $(1)/lkl.a $(INC)
+	$($(1)_CROSS)gcc $$(CFLAGS) $($(1)_EXTRA_CFLAGS) -Iinclude -I$(1)/include $$*.c $(1)/vmlinux $(1)/lkl.a $($(1)_LD_FLAGS) -o $$@
 endef
 
 $(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
