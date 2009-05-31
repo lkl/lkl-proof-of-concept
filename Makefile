@@ -6,11 +6,11 @@ all: vfs.posix vfs.apr vfs.nt net.linux
 
 include/asm:
 	-mkdir `dirname $@`
-	ln -s $(LINUX)/include/asm-lkl include/asm
+	ln -s $(LINUX)/arch/lkl/include/asm include/asm
 
-include/asm-i386:
+include/x86:
 	-mkdir `dirname $@`
-	ln -s $(LINUX)/include/asm-i386 include/asm-i386
+	ln -s $(LINUX)/arch/x86 include/x86
 
 include/asm-generic:
 	-mkdir `dirname $@`
@@ -20,7 +20,7 @@ include/linux:
 	-mkdir `dirname $@`
 	ln -s $(LINUX)/include/linux include/linux
 
-INC=include/asm include/asm-generic include/asm-i386 include/linux 
+INC=include/asm include/asm-generic include/x86 include/linux
 
 CFLAGS=-Wall -g
 
@@ -39,8 +39,8 @@ posix_LD_FLAGS=-lpthread
 linux_LD_FLAGS=-lpthread
 #linux_CROSS=/opt/cegl-2.0/powerpc-750-linux-gnu/gcc-3.3.4-glibc-2.3.3/bin/powerpc-750-linux-gnu-
 
-apr_EXTRA_CFLAGS=-I/usr/include/apr-1.0/ -D_LARGEFILE64_SOURCE
-apr_LD_FLAGS=-L/usr/lib/debug/usr/lib -lapr-1
+apr_EXTRA_CFLAGS:=`apr-1-config --cflags --cppflags --includes`
+apr_LD_FLAGS:=`apr-1-config --link-ld --libs`
 
 %/.config: %.config 
 	mkdir -p $* && \
@@ -72,7 +72,7 @@ $(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
 
 clean:
 	-rm -rf apr linux posix nt ntk 
-	-rm -f include/asm include/asm-i386 include/asm-generic include/linux	
+	-rm -f include/asm include/x86 include/asm-generic include/linux
 	-rmdir include
 	-rm -f $(patsubst %,*.%,$(ENVS))
 

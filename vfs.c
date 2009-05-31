@@ -49,7 +49,7 @@ void file_close(void *f)
 {
 	apr_file_close(f);
 }
-#else
+#else /* CONFIG_LKL_ENV_APR */
 void* file_open(const char *name)
 {
 	return fopen(name, "r+b");
@@ -59,7 +59,7 @@ void file_close(void *f)
 {
 	fclose(f);
 }
-#endif
+#endif  /* CONFIG_LKL_ENV_APR */
 
 
 void mount_disk(const char *filename, const char *fs)
