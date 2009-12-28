@@ -62,81 +62,105 @@ void file_close(void *f)
 #endif  /* CONFIG_LKL_ENV_APR */
 
 
-void mount_disk(const char *filename, const char *fs)
+void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
 {
-	char dev_str[]= { "/dev/xxxxxxxxxxxxxxxx" };
-
-	f=file_open("disk");
+	int rc;
+	f = file_open("disk");
 	assert(f != NULL);
-	dev=lkl_disk_add_disk(f, 20480000);
+	dev = lkl_disk_add_disk(f, 20480000);
 	assert(dev != 0);
 
-	/* create /dev/dev */
-	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", dev);
-	lkl_sys_unlink(dev_str);
-	assert(lkl_sys_mknod(dev_str, S_IFBLK|0600, dev) == 0);
-
-	/* mount and chdir */
-	assert(lkl_sys_mount(dev_str, "/root", (char*)fs, 0, 0) == 0);
-	assert(lkl_sys_chdir("/root") == 0);
-	assert(lkl_sys_chroot(".") == 0);
+	rc = lkl_mount_dev(dev, NULL, 0, NULL, mntpath, mntpath_size);
+	if (rc)
+		printf("mount_disk> lkl_mount_dev rc=%d\n", rc);
 }
 
 void umount_disk(void)
 {
-	lkl_sys_umount("/", 0);
+	int rc;
+	rc = lkl_umount_dev(dev, 0);
+	if (rc)
+		printf("umount_disk> lkl_umount_dev rc=%d\n", rc);
+	rc = lkl_disk_del_disk(dev);
+	if (rc)
+		printf("umount_disk> lkl_disk_del_disk rc=%d\n", rc);
+
+	file_close(f);
 }
 
-int main(int argc, char **argv, char **env)
+void list_files(const char * path)
 {
-	int fd, i, tmp;
-#ifdef CONFIG_LKL_ENV_APR
-	apr_init();
-#endif
-	lkl_env_init(16*1024*1024);
-
-	mount_disk("disk", "ext3");
-
-
-	fd=lkl_sys_open("CREDITS", O_RDONLY, 0);
-	char buffer[5098];
-	while ((tmp=lkl_sys_read(fd, buffer, sizeof(buffer))) > 0) {
-		write(1, buffer, tmp);
-	}
-	lkl_sys_close(fd);
-
-	fd=lkl_sys_open(".", O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0), i;
+	int fd;
+	printf("-------- printing contents of [%s]\n", path);
+	fd = lkl_sys_open(path, O_RDONLY|O_LARGEFILE|O_DIRECTORY, 0);
 	if (fd >= 0) {
 		char x[4096];
 		int count, reclen;
 		struct __kernel_dirent *de;
 
-		count=lkl_sys_getdents(fd, (struct __kernel_dirent*)x, sizeof(x));
-		assert(count>0);
+		count = lkl_sys_getdents(fd, (struct __kernel_dirent*) x, sizeof(x));
+		assert(count > 0);
 
-		de=(struct __kernel_dirent*)x;
+		de = (struct __kernel_dirent*) x;
 		while (count > 0) {
-			reclen=de->d_reclen;
+			reclen = de->d_reclen;
 			printf("%s %ld\n", de->d_name, de->d_ino);
-			de=(struct __kernel_dirent*)((char*)de+reclen); count-=reclen;
+			de = (struct __kernel_dirent*) ((char*) de+reclen);
+			count-=reclen;
 		}
 
 		lkl_sys_close(fd);
 	}
+	printf("++++++++ done printing contents of [%s]\n", path);
+}
 
-
-	/* test timers */
+void test_timer(void)
+{
 	struct __kernel_timespec ts = { .tv_sec = 1};
-	for(i=3; i>0; i--) {
+	int i;
+	for(i = 3; i > 0; i--) {
 		printf("Shutdown in %d \r", i); fflush(stdout);
 		lkl_sys_nanosleep(&ts, NULL);
 	}
+}
 
+void test_file_system(const char * mntstr)
+{
+	int fd, tmp;
+	char buffer[5098];
+	strcpy(buffer, mntstr);
+	strcat(buffer, "CREDITS");
+	// this test thinks that there's a "CREDITS" file in the root
+	// of the mounted disk
+
+	fd = lkl_sys_open(buffer, O_RDONLY, 0);
+	while ((tmp = lkl_sys_read(fd, buffer, sizeof(buffer))) > 0)
+		write(1, buffer, tmp);
+	lkl_sys_close(fd);
+
+	list_files("."); // "." should be equal to "/"
+	list_files(mntstr);
+}
+
+int main(int argc, char **argv, char **env)
+{
+	char mnt_str[]= { "/dev/xxxxxxxxxxxxxxxx" };
+
+#ifdef CONFIG_LKL_ENV_APR
+	apr_init();
+#endif
+	lkl_env_init(16*1024*1024);
+
+	mount_disk("disk", mnt_str, sizeof(mnt_str));
+	test_file_system(mnt_str);
 	umount_disk();
 
-	lkl_sys_halt();
+	mount_disk("disk", mnt_str, sizeof(mnt_str));
+	test_file_system(mnt_str);
+	umount_disk();
 
-	file_close(f);
+	test_timer();
+	lkl_env_fini();
 
         return 0;
 }
