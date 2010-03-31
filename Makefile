@@ -1,6 +1,10 @@
 HERE=$(PWD)
 LINUX=$(HERE)/../linux-2.6
 
+force:
+	rm -f posix/lkl.a vfs.posix
+	make vfs.posix
+
 all: vfs.posix vfs.apr vfs.nt net.linux 
 #vfs.ntk
 
@@ -34,7 +38,7 @@ ntk_LD_FLAGS=-Wl,--subsystem,native -Wl,--entry,_DriverEntry@8 -nostartfiles \
 		-lntoskrnl -lhal -nostdlib -shared
 ntk_EXTRA_CFLAGS=-gstabs+ -D_WIN32_WINNT=0x0500
 
-posix_LD_FLAGS=-lpthread
+posix_LD_FLAGS=-lpthread -rdynamic
 
 linux_LD_FLAGS=-lpthread
 #linux_CROSS=/opt/cegl-2.0/powerpc-750-linux-gnu/gcc-3.3.4-glibc-2.3.3/bin/powerpc-750-linux-gnu-
