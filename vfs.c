@@ -59,7 +59,7 @@ void file_close(void *f)
 {
 	fclose(f);
 }
-#endif  /* CONFIG_LKL_ENV_APR */
+#endif	/* CONFIG_LKL_ENV_APR */
 
 
 void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
@@ -88,6 +88,63 @@ void umount_disk(void)
 	file_close(f);
 }
 
+static char mode2kind(unsigned mode)
+{
+	switch(mode & S_IFMT){
+	case S_IFSOCK: return 's';
+	case S_IFLNK: return 'l';
+	case S_IFREG: return '-';
+	case S_IFDIR: return 'd';
+	case S_IFBLK: return 'b';
+	case S_IFCHR: return 'c';
+	case S_IFIFO: return 'p';
+	default: return '?';
+	}
+}
+
+static void mode2str(unsigned mode, char *out)
+{
+	*out++ = mode2kind(mode);
+
+	*out++ = (mode & 0400) ? 'r' : '-';
+	*out++ = (mode & 0200) ? 'w' : '-';
+	if(mode & 04000) {
+		*out++ = (mode & 0100) ? 's' : 'S';
+	} else {
+		*out++ = (mode & 0100) ? 'x' : '-';
+	}
+	*out++ = (mode & 040) ? 'r' : '-';
+	*out++ = (mode & 020) ? 'w' : '-';
+	if(mode & 02000) {
+		*out++ = (mode & 010) ? 's' : 'S';
+	} else {
+		*out++ = (mode & 010) ? 'x' : '-';
+	}
+	*out++ = (mode & 04) ? 'r' : '-';
+	*out++ = (mode & 02) ? 'w' : '-';
+	if(mode & 01000) {
+		*out++ = (mode & 01) ? 't' : 'T';
+	} else {
+		*out++ = (mode & 01) ? 'x' : '-';
+	}
+	*out = 0;
+}
+
+int read_stat64(char * path)
+{
+	char mode[200];
+	struct __kernel_stat64 stat;
+	int rc = lkl_sys_stat64(path, &stat);
+	if (rc != 0) {
+		printf("sys_stat64(%s) error=%d strerr=[%s]\n", path, rc, strerror(-rc));
+		return rc;
+	}
+	mode2str(stat.st_mode, mode);
+	printf("%s %5lu %5d --- [%s]\n",
+		   (char *) mode, (unsigned long) stat.st_size, (int)stat.st_uid, path);
+	return 0;
+}
+
 void list_files(const char * path)
 {
 	int fd;
@@ -104,7 +161,12 @@ void list_files(const char * path)
 		de = (struct __kernel_dirent*) x;
 		while (count > 0) {
 			reclen = de->d_reclen;
-			printf("%s %ld\n", de->d_name, de->d_ino);
+			char fullpath[4096];
+			fullpath[0] = '\0';
+			strncat(fullpath, path, sizeof(fullpath));
+			strncat(fullpath, "/",sizeof(fullpath));
+			strncat(fullpath, de->d_name,sizeof(fullpath));
+			read_stat64(fullpath);
 			de = (struct __kernel_dirent*) ((char*) de+reclen);
 			count-=reclen;
 		}
@@ -113,6 +175,7 @@ void list_files(const char * path)
 	}
 	printf("++++++++ done printing contents of [%s]\n", path);
 }
+
 
 void test_timer(void)
 {
@@ -126,18 +189,6 @@ void test_timer(void)
 
 void test_file_system(const char * mntstr)
 {
-	int fd, tmp;
-	char buffer[5098];
-	strcpy(buffer, mntstr);
-	strcat(buffer, "CREDITS");
-	// this test thinks that there's a "CREDITS" file in the root
-	// of the mounted disk
-
-	fd = lkl_sys_open(buffer, O_RDONLY, 0);
-	while ((tmp = lkl_sys_read(fd, buffer, sizeof(buffer))) > 0)
-		write(1, buffer, tmp);
-	lkl_sys_close(fd);
-
 	list_files("."); // "." should be equal to "/"
 	list_files(mntstr);
 }
@@ -162,5 +213,5 @@ int main(int argc, char **argv, char **env)
 	test_timer();
 	lkl_env_fini();
 
-        return 0;
+	return 0;
 }
