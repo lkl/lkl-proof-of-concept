@@ -81,3 +81,15 @@ clean:
 	-rm -f $(patsubst %,*.%,$(ENVS))
 
 
+.PHONY:disk
+
+disk:
+	rm -fr mnt disk
+	dd if=/dev/zero of=disk bs=4M count=10
+	mkfs.ext3 -F disk
+	mkdir mnt
+	sudo mount -o loop disk mnt
+	sudo cp -a /etc/ mnt/
+	sync
+	sync
+	sudo umount mnt
