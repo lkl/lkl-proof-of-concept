@@ -3,6 +3,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include <asm/lkl.h>
 #include <asm/disk.h>
@@ -177,6 +178,45 @@ void list_files(const char * path)
 }
 
 
+void create_file(const char * mnt, const char * new_file, const char * contents)
+{
+	int len = strlen(mnt) + strlen(new_file) + 2;
+	char * buf = malloc(len);
+	printf("create_file(%s/%s):: enter\n", mnt, new_file);
+	if (buf == NULL) {
+		printf("create_file(%s/%s) could not allocate %d bytes of mem\n",
+			   mnt, new_file, len);
+		return;
+	}
+	snprintf(buf, len, "%s/%s", mnt, new_file);
+	int fd = lkl_sys_open(buf, O_CREAT|O_WRONLY|O_TRUNC|O_EXCL, 0422);
+	free(buf);
+	if (fd < 0) {
+		printf("create_file: lkl_sys_open rc=%d str=[%s]\n", -fd, strerror(-fd));
+		return;
+	}
+	int rc = lkl_sys_write(fd, contents, strlen(contents));
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_write rc=%d str=[%s]\n", -rc, strerror(-rc));
+		return;
+	}
+	rc = lkl_sys_close(fd);
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_close rc=%d str=[%s]", -rc, strerror(-rc));
+		return;
+	}
+	rc = lkl_sys_sync();
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_sync rc=%d str=[%s]", -rc, strerror(-rc));
+		return;
+	}
+	printf("create_file(%s/%s) success\n", mnt, new_file);
+}
+
+
 void test_timer(void)
 {
 	struct __kernel_timespec ts = { .tv_sec = 1};
@@ -191,6 +231,7 @@ void test_file_system(const char * mntstr)
 {
 	list_files("."); // "." should be equal to "/"
 	list_files(mntstr);
+	create_file(mntstr, "bibi02", "continut12");
 }
 
 int main(int argc, char **argv, char **env)
