@@ -71,7 +71,7 @@ void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
 	dev = lkl_disk_add_disk(f, 20480000);
 	assert(dev != 0);
 
-	rc = lkl_mount_dev(dev, NULL, 0, NULL, mntpath, mntpath_size);
+	rc = lkl_mount_dev(dev, NULL, 0, "data=journal", mntpath, mntpath_size);
 	if (rc)
 		printf("mount_disk> lkl_mount_dev rc=%d\n", rc);
 }
