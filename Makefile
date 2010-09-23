@@ -74,6 +74,10 @@ endef
 
 $(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
 
+tester.linux: tester.c tester*.h linux/vmlinux linux/lkl.afg
+
+	$(linux_CROSS)gcc $(CFLAGS) $(linux_EXTRA_CFLAGS) -Iinclude -Ilinux/include tester.c linux/vmlinux linux/lkl.a $(linux_LD_FLAGS) -lm -o tester.linux
+
 clean:
 	-rm -rf apr linux posix nt ntk 
 	-rm -f include/asm include/x86 include/asm-generic include/linux

@@ -22,4 +22,6 @@ vfs.apr
 vfs.nt
 vfs.ntk
 net.linux
+*.img
+tester.linux
 
