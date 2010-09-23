@@ -7,7 +7,6 @@
 
 #include <asm/lkl.h>
 #include <asm/disk.h>
-#include <linux/autoconf.h>
 #include <asm/env.h>
 
 
@@ -71,9 +70,10 @@ void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
 	dev = lkl_disk_add_disk(f, 20480000);
 	assert(dev != 0);
 
-	rc = lkl_mount_dev(dev, NULL, 0, "data=journal", mntpath, mntpath_size);
+	rc = lkl_mount_dev(dev, NULL, 0, "data=ordered,barrier=1", mntpath, mntpath_size);
 	if (rc)
-		printf("mount_disk> lkl_mount_dev rc=%d\n", rc);
+		printf("mount_disk> lkl_mount_dev(dev=%d) rc=%d strerr=[%s]\n",
+		       dev, rc, strerror(-rc));
 }
 
 void umount_disk(void)
@@ -189,12 +189,14 @@ void create_file(const char * mnt, const char * new_file, const char * contents)
 		return;
 	}
 	snprintf(buf, len, "%s/%s", mnt, new_file);
+	printf("buf=[%s], mnt=[%s], new_file=[%s]\n", buf, mnt, new_file);
 	int fd = lkl_sys_open(buf, O_CREAT|O_WRONLY|O_TRUNC|O_EXCL, 0422);
-	free(buf);
 	if (fd < 0) {
-		printf("create_file: lkl_sys_open rc=%d str=[%s]\n", -fd, strerror(-fd));
+	  printf("create_file: lkl_sys_open(%s) rc=%d str=[%s]\n", buf, -fd, strerror(-fd));
 		return;
 	}
+	free(buf);
+
 	int rc = lkl_sys_write(fd, contents, strlen(contents));
 	if (rc < 0) {
 		errno = -rc;
@@ -230,6 +232,7 @@ void test_timer(void)
 void test_file_system(const char * mntstr)
 {
 	list_files("."); // "." should be equal to "/"
+	list_files("/dev/");
 	list_files(mntstr);
 	create_file(mntstr, "bibi02", "continut12");
 }
