@@ -5,7 +5,7 @@
 #include <sys/time.h>
 #include <math.h>
 
-static char doc[] = "LKL tester";
+static char doc[] = "LKL bench tool";
 
 /* A description of the arguments we accept. */
 static char args_doc[] = "";
@@ -95,9 +95,9 @@ static inline float samples_avg(void)
 
 }
 
-#include "tester_fs.h"
-#include "tester_basic.h"
-#include "tester_devzero.h"
+#include "bench_fs.h"
+#include "bench_basic.h"
+#include "bench_devzero.h"
 
 static struct test tests[] = {
 	{ "syscall_latency", test_syscall_latency, 0},

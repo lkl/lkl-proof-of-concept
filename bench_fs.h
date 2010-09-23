@@ -194,7 +194,7 @@ void test_fs_seek(void)
 				lseek(fd, random() % 127*1024*1024, SEEK_SET);
 			do_complete_read(fd, 512);
 		}
-		if (cla.lkl
+		if (cla.lkl)
 			lkl_sys_close(fd);
 		else
 			close(fd);

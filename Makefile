@@ -74,9 +74,8 @@ endef
 
 $(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
 
-tester.linux: tester.c tester*.h linux/vmlinux linux/lkl.afg
-
-	$(linux_CROSS)gcc $(CFLAGS) $(linux_EXTRA_CFLAGS) -Iinclude -Ilinux/include tester.c linux/vmlinux linux/lkl.a $(linux_LD_FLAGS) -lm -o tester.linux
+bench.linux: bench.c bench*.h linux/vmlinux linux/lkl.a
+	$(linux_CROSS)gcc $(CFLAGS) $(linux_EXTRA_CFLAGS) -Iinclude -Ilinux/include bench.c linux/vmlinux linux/lkl.a $(linux_LD_FLAGS) -lm -o bench.linux
 
 clean:
 	-rm -f $(patsubst %,*.%,$(ENVS))
