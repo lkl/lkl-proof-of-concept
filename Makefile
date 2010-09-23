@@ -75,10 +75,13 @@ endef
 $(foreach env,$(ENVS),$(eval $(call env_template,$(env))))
 
 clean:
+	-rm -f $(patsubst %,*.%,$(ENVS))
+
+clean-all: clean
 	-rm -rf apr linux posix nt ntk 
 	-rm -f include/asm include/x86 include/asm-generic include/linux
 	-rmdir include
-	-rm -f $(patsubst %,*.%,$(ENVS))
+	-rm -rf mnt disk
 
 
 .PHONY:disk
