@@ -79,9 +79,24 @@ tester.linux: tester.c tester*.h linux/vmlinux linux/lkl.afg
 	$(linux_CROSS)gcc $(CFLAGS) $(linux_EXTRA_CFLAGS) -Iinclude -Ilinux/include tester.c linux/vmlinux linux/lkl.a $(linux_LD_FLAGS) -lm -o tester.linux
 
 clean:
+	-rm -f $(patsubst %,*.%,$(ENVS))
+
+clean-all: clean
 	-rm -rf apr linux posix nt ntk 
 	-rm -f include/asm include/x86 include/asm-generic include/linux
 	-rmdir include
-	-rm -f $(patsubst %,*.%,$(ENVS))
+	-rm -rf mnt disk
 
 
+.PHONY:disk
+
+disk:
+	rm -fr mnt disk
+	dd if=/dev/zero of=disk bs=4M count=10
+	mkfs.ext3 -F disk
+	mkdir mnt
+	sudo mount -o loop disk mnt
+	sudo cp -a /etc/ mnt/
+	sync
+	sync
+	sudo umount mnt

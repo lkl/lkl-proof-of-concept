@@ -3,10 +3,10 @@
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include <asm/lkl.h>
 #include <asm/disk.h>
-#include <linux/autoconf.h>
 #include <asm/env.h>
 
 
@@ -59,7 +59,7 @@ void file_close(void *f)
 {
 	fclose(f);
 }
-#endif  /* CONFIG_LKL_ENV_APR */
+#endif	/* CONFIG_LKL_ENV_APR */
 
 
 void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
@@ -70,9 +70,10 @@ void mount_disk(const char *filename, char *mntpath, size_t mntpath_size)
 	dev = lkl_disk_add_disk(f, 20480000);
 	assert(dev != 0);
 
-	rc = lkl_mount_dev(dev, NULL, 0, NULL, mntpath, mntpath_size);
+	rc = lkl_mount_dev(dev, NULL, 0, "data=ordered,barrier=1", mntpath, mntpath_size);
 	if (rc)
-		printf("mount_disk> lkl_mount_dev rc=%d\n", rc);
+		printf("mount_disk> lkl_mount_dev(dev=%d) rc=%d strerr=[%s]\n",
+		       dev, rc, strerror(-rc));
 }
 
 void umount_disk(void)
@@ -86,6 +87,63 @@ void umount_disk(void)
 		printf("umount_disk> lkl_disk_del_disk rc=%d\n", rc);
 
 	file_close(f);
+}
+
+static char mode2kind(unsigned mode)
+{
+	switch(mode & S_IFMT){
+	case S_IFSOCK: return 's';
+	case S_IFLNK: return 'l';
+	case S_IFREG: return '-';
+	case S_IFDIR: return 'd';
+	case S_IFBLK: return 'b';
+	case S_IFCHR: return 'c';
+	case S_IFIFO: return 'p';
+	default: return '?';
+	}
+}
+
+static void mode2str(unsigned mode, char *out)
+{
+	*out++ = mode2kind(mode);
+
+	*out++ = (mode & 0400) ? 'r' : '-';
+	*out++ = (mode & 0200) ? 'w' : '-';
+	if(mode & 04000) {
+		*out++ = (mode & 0100) ? 's' : 'S';
+	} else {
+		*out++ = (mode & 0100) ? 'x' : '-';
+	}
+	*out++ = (mode & 040) ? 'r' : '-';
+	*out++ = (mode & 020) ? 'w' : '-';
+	if(mode & 02000) {
+		*out++ = (mode & 010) ? 's' : 'S';
+	} else {
+		*out++ = (mode & 010) ? 'x' : '-';
+	}
+	*out++ = (mode & 04) ? 'r' : '-';
+	*out++ = (mode & 02) ? 'w' : '-';
+	if(mode & 01000) {
+		*out++ = (mode & 01) ? 't' : 'T';
+	} else {
+		*out++ = (mode & 01) ? 'x' : '-';
+	}
+	*out = 0;
+}
+
+int read_stat64(char * path)
+{
+	char mode[200];
+	struct __kernel_stat64 stat;
+	int rc = lkl_sys_stat64(path, &stat);
+	if (rc != 0) {
+		printf("sys_stat64(%s) error=%d strerr=[%s]\n", path, rc, strerror(-rc));
+		return rc;
+	}
+	mode2str(stat.st_mode, mode);
+	printf("%s %5lu %5d --- [%s]\n",
+		   (char *) mode, (unsigned long) stat.st_size, (int)stat.st_uid, path);
+	return 0;
 }
 
 void list_files(const char * path)
@@ -104,7 +162,12 @@ void list_files(const char * path)
 		de = (struct __kernel_dirent*) x;
 		while (count > 0) {
 			reclen = de->d_reclen;
-			printf("%s %ld\n", de->d_name, de->d_ino);
+			char fullpath[4096];
+			fullpath[0] = '\0';
+			strncat(fullpath, path, sizeof(fullpath));
+			strncat(fullpath, "/",sizeof(fullpath));
+			strncat(fullpath, de->d_name,sizeof(fullpath));
+			read_stat64(fullpath);
 			de = (struct __kernel_dirent*) ((char*) de+reclen);
 			count-=reclen;
 		}
@@ -113,6 +176,48 @@ void list_files(const char * path)
 	}
 	printf("++++++++ done printing contents of [%s]\n", path);
 }
+
+
+void create_file(const char * mnt, const char * new_file, const char * contents)
+{
+	int len = strlen(mnt) + strlen(new_file) + 2;
+	char * buf = malloc(len);
+	printf("create_file(%s/%s):: enter\n", mnt, new_file);
+	if (buf == NULL) {
+		printf("create_file(%s/%s) could not allocate %d bytes of mem\n",
+			   mnt, new_file, len);
+		return;
+	}
+	snprintf(buf, len, "%s/%s", mnt, new_file);
+	printf("buf=[%s], mnt=[%s], new_file=[%s]\n", buf, mnt, new_file);
+	int fd = lkl_sys_open(buf, O_CREAT|O_WRONLY|O_TRUNC|O_EXCL, 0422);
+	if (fd < 0) {
+	  printf("create_file: lkl_sys_open(%s) rc=%d str=[%s]\n", buf, -fd, strerror(-fd));
+		return;
+	}
+	free(buf);
+
+	int rc = lkl_sys_write(fd, contents, strlen(contents));
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_write rc=%d str=[%s]\n", -rc, strerror(-rc));
+		return;
+	}
+	rc = lkl_sys_close(fd);
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_close rc=%d str=[%s]", -rc, strerror(-rc));
+		return;
+	}
+	rc = lkl_sys_sync();
+	if (rc < 0) {
+		errno = -rc;
+		printf("create_file: lkl_sys_sync rc=%d str=[%s]", -rc, strerror(-rc));
+		return;
+	}
+	printf("create_file(%s/%s) success\n", mnt, new_file);
+}
+
 
 void test_timer(void)
 {
@@ -126,20 +231,10 @@ void test_timer(void)
 
 void test_file_system(const char * mntstr)
 {
-	int fd, tmp;
-	char buffer[5098];
-	strcpy(buffer, mntstr);
-	strcat(buffer, "CREDITS");
-	// this test thinks that there's a "CREDITS" file in the root
-	// of the mounted disk
-
-	fd = lkl_sys_open(buffer, O_RDONLY, 0);
-	while ((tmp = lkl_sys_read(fd, buffer, sizeof(buffer))) > 0)
-		write(1, buffer, tmp);
-	lkl_sys_close(fd);
-
 	list_files("."); // "." should be equal to "/"
+	list_files("/dev/");
 	list_files(mntstr);
+	create_file(mntstr, "bibi02", "continut12");
 }
 
 int main(int argc, char **argv, char **env)
@@ -162,5 +257,5 @@ int main(int argc, char **argv, char **env)
 	test_timer();
 	lkl_env_fini();
 
-        return 0;
+	return 0;
 }
