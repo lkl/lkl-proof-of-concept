@@ -280,7 +280,7 @@ int main(int argc, char **argv)
 		write(1, buffer, err);
 		total+=err;
 		if (time(NULL)-last_time >= SAMPLE_RATE) {
-			printf("%ld %ld\n", total, (total-last_bytes)/SAMPLE_RATE);
+			fprintf(stderr, "%ld %ld\n", total, (total-last_bytes)/SAMPLE_RATE);
 			last_time=time(NULL);
 			last_bytes=total;
 		}
