@@ -6,7 +6,6 @@
 
 #include <asm/lkl.h>
 #include <asm/disk.h>
-#include <linux/autoconf.h>
 #include <asm/env.h>
 
 
