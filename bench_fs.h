@@ -208,7 +208,7 @@ int fs_pre_test(void)
 {
 	int rc = 0;
 
-	if (!cla.fsimg)
+	if (!cla.test->fs)
 		return rc;
 
 	if (cla.lkl) {
@@ -247,7 +247,7 @@ int fs_pre_test(void)
 		rc = system(tmp);
 		if (rc < 0)
 			fprintf(stderr, "%s: loop: failed to mount loop\n", __func__);
-	} else if (cla.native) {
+	} else {
 		char tmp[1024], *tmp_dir;
 
 		tmp_dir = mkdtemp("/tmp/lkl_tester_XXXXXX");
@@ -262,15 +262,14 @@ int fs_pre_test(void)
 		rc = system(tmp);
 		if (rc < 0)
 			fprintf(stderr, "%s: loop: failed to mount loop\n", __func__);
-	} else
-		rc = -1;
+	}
 
 	return rc;
 }
 
 void fs_post_test(void)
 {
-	if (!cla.fsimg)
+	if (!cla.test->fs)
 		return;
 
 	if (cla.lkl) {
@@ -283,7 +282,7 @@ void fs_post_test(void)
 		snprintf(tmp, sizeof(tmp), "umount %s", fs_path);
 		system(tmp);
 		rmdir(fs_path);
-	} else if (cla.native) {
+	} else {
 		char tmp[1024];
 
 		snprintf(tmp, sizeof(tmp), "rm -rf %s", fs_path);

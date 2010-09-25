@@ -12,7 +12,7 @@ static void run_syscall(const char *name, long (*f)(void))
 
 	printf("%s latency ...", name); fflush(stdout);
 
-	for(i = 0; i <  100; i++) {
+	for(i = 0; i < 10000; i++) {
 		test_mark_start(0);
 		f();
 		test_mark_stop(0);
