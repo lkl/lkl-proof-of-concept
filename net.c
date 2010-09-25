@@ -13,6 +13,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/ether.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 
 #include <asm/env.h>
 #include <asm/eth.h>
@@ -213,9 +215,10 @@ int main(int argc, char **argv)
 		return -1;
 	}
 		
-
 	if (cla.lkl) {
-		int ifindex;       
+		int ifindex, sock;
+		struct ifreq ifr;
+
 
 		if (!cla.iface || !cla.mac || !cla.netmask_len ||
 		    !cla.address.s_addr || !cla.gateway.s_addr) {
@@ -223,8 +226,26 @@ int main(int argc, char **argv)
 			return -1;
 		}
 
+		strncpy(ifr.ifr_name, cla.iface, IFNAMSIZ);
+		sock = socket(PF_INET, SOCK_DGRAM, 0);
+		if (sock < 0) {
+			fprintf(stderr, "failed to create DGRAM INET socket: %s\n", strerror(errno));
+			return -1;
+		}
 
-		if (lkl_env_init(16*1024*1024) < 0)
+		err = ioctl(sock, SIOCGIFFLAGS, (long)&ifr);
+		if (err) {
+			fprintf(stderr, "failed to get flags on %s: %s\n", cla.iface, strerror(errno));
+			return -1;
+		}
+		ifr.ifr_flags |= IFF_PROMISC;
+		err = ioctl(sock, SIOCSIFFLAGS, (long)&ifr);
+		if (err) {
+			fprintf(stderr, "failed to set %s in promisc mode\n", cla.iface);
+			return -1;
+		}
+
+		if (lkl_env_init(256*1024*1024) < 0)
 			return -1;
 		
 		if ((ifindex=lkl_add_eth(cla.iface, (char*)cla.mac, 32)) == 0) 
@@ -262,7 +283,7 @@ int main(int argc, char **argv)
 	if ((err=do_connect(sock, (struct sockaddr*)&saddr,
 			    sizeof(saddr))) < 0) {
 		printf("can't connect to %s:%u: %s\n",
-		       inet_ntoa(cla.host), ntohl(saddr.sin_port), 
+		       inet_ntoa(cla.host), ntohs(saddr.sin_port), 
 		       strerror(get_error(err)));
 		return -1;
 	}
